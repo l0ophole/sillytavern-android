@@ -30,6 +30,7 @@ class AppContainer(app: Application) {
         settings = { settings.settings.value },
         apiKey = { secrets.get("key:$it") },
         scope = scope,
+        worlds = worlds,
         counterFor = { if (it == BackendType.OPENAI) tiktoken else ApproxTokenCounter },
     )
 }

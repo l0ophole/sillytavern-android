@@ -23,7 +23,7 @@ class ChatControllerTest {
     private val fake = Backend { req -> lastReq = req; flow { emit("par"); emit("tial") } }
 
     private fun TestScope.controller(settings: AppSettings = withConn, backend: Backend = fake) =
-        ChatController(ChatRepository(paths), { backend }, { settings }, { "key" }, this)
+        ChatController(ChatRepository(paths), { backend }, { settings }, { "key" }, this, worlds = app.sillytavern.android.worldinfo.WorldBookRepository(paths))
 
     @Test fun sendStreamsAndPersists() = runTest {
         val c = controller(); c.open(ch)
@@ -89,5 +89,34 @@ class ChatControllerTest {
         assertTrue(req.textPrompt.startsWith("<|im_start|>system"))
         assertTrue(req.stopSequences.contains("<|im_end|>"))
         assertTrue(req.textPrompt.endsWith("<|im_start|>assistant\nAnn:"))
+    }
+
+    private fun lore(content: String = "DRAGONLORE", block: app.sillytavern.android.worldinfo.WorldEntry.() -> app.sillytavern.android.worldinfo.WorldEntry = { this }) {
+        app.sillytavern.android.worldinfo.WorldBookRepository(paths).save(app.sillytavern.android.worldinfo.WorldBook("G",
+            listOf(app.sillytavern.android.worldinfo.WorldEntry(uid = 1, key = listOf("dragon"), content = content).block())))
+    }
+
+    @Test fun worldInfoReachesRequest() = runTest {
+        lore()
+        val c = controller(withConn.copy(globalWorldBooks = listOf("G"))); c.open(ch)
+        c.send("I see a dragon"); advanceUntilIdle()
+        assertTrue(lastReq!!.messages.any { it.content.contains("DRAGONLORE") })
+    }
+
+    @Test fun noBooksNoChange() = runTest {
+        val c = controller(); c.open(ch); c.send("dragon"); advanceUntilIdle()
+        assertTrue(lastReq!!.messages.none { it.content.contains("DRAGONLORE") })
+    }
+
+    @Test fun timedStatePersistedAndRegenerateDoesNotAdvance() = runTest {
+        lore { copy(sticky = 5) }
+        val c = controller(withConn.copy(globalWorldBooks = listOf("G"))); c.open(ch)
+        c.send("a dragon"); advanceUntilIdle()
+        val file = c.state.value.chat!!.file!!
+        val saved = ChatRepository(paths).load(file)
+        assertNotNull(app.sillytavern.android.worldinfo.WorldInfoRunner.timedOf(saved).sticky["G.1"])
+        val before = app.sillytavern.android.worldinfo.WorldInfoRunner.timedOf(c.state.value.chat).sticky
+        c.regenerate(); advanceUntilIdle()
+        assertEquals(before, app.sillytavern.android.worldinfo.WorldInfoRunner.timedOf(c.state.value.chat).sticky)
     }
 }

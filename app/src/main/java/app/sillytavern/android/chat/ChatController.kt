@@ -6,6 +6,7 @@ import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.prompt.*
+import app.sillytavern.android.worldinfo.*
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -30,6 +31,7 @@ class ChatController(
     private val apiKey: (connectionId: String) -> String?,
     private val scope: CoroutineScope,
     private val counterFor: (BackendType) -> TokenCounter = { ApproxTokenCounter },
+    private val worlds: WorldBookRepository? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -92,19 +94,19 @@ class ChatController(
         if (last.isUser) generateNew() else {
             val idx = messages.lastIndex
             mutate { it.toMutableList().also { l -> l[idx] = l[idx].addSwipe("") } }
-            runGeneration(GenerationMode.NORMAL, idx, appendTo = false)
+            runGeneration(GenerationMode.NORMAL, idx, appendTo = false, trigger = "regenerate")
         }
     }
 
     fun continueLast() {
         if (_state.value.generating) return
         val last = messages.lastOrNull()?.takeIf { !it.isUser } ?: return
-        runGeneration(GenerationMode.CONTINUE, messages.lastIndex, appendTo = true)
+        runGeneration(GenerationMode.CONTINUE, messages.lastIndex, appendTo = true, trigger = "continue")
     }
 
     fun impersonate() {
         if (_state.value.generating || messages.isEmpty()) return
-        runGeneration(GenerationMode.IMPERSONATE, null, appendTo = false)
+        runGeneration(GenerationMode.IMPERSONATE, null, appendTo = false, trigger = "impersonate")
     }
 
     fun swipe(index: Int, delta: Int) {
@@ -137,7 +139,7 @@ class ChatController(
         runGeneration(GenerationMode.NORMAL, messages.lastIndex, appendTo = false)
     }
 
-    private fun runGeneration(mode: GenerationMode, targetIndex: Int?, appendTo: Boolean) {
+    private fun runGeneration(mode: GenerationMode, targetIndex: Int?, appendTo: Boolean, trigger: String = "normal") {
         val character = _state.value.character ?: return
         val s = settings()
         val profile = s.activeConnection
@@ -158,14 +160,22 @@ class ChatController(
             // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
             systemPrompt = if (textMode) s.activeSystemPrompt else null,
         )
+        // Re-rolls of an existing reply must not advance sticky/cooldown timers.
+        val dryRun = trigger != "normal"
+        val worldInfoInput = worlds?.let { w ->
+            val entries = WorldInfoSources.resolve(character.card, character.fileName, WorldInfoRunner.chatBookOf(chat), s, w)
+            val (prompt, timed) = WorldInfoRunner.run(entries, history, input, s.worldInfo, trigger, WorldInfoRunner.timedOf(chat), dryRun)
+            if (!dryRun && entries.isNotEmpty()) _state.update { st -> st.copy(chat = st.chat?.let { WorldInfoRunner.withTimed(it, timed) }) }
+            input.copy(worldInfo = prompt)
+        } ?: input
         val req = if (textMode) {
-            val formatted = PromptBuilder.buildText(input, s.activeInstruct, s.activeContext)
+            val formatted = PromptBuilder.buildText(worldInfoInput, s.activeInstruct, s.activeContext)
             GenerationRequest(
                 profile, apiKey(profile.id), emptyList(), formatted.text,
                 stopSequences = (profile.sampler.stopSequences + formatted.stopStrings).distinct(),
                 sampler = s.activeSamplerPreset,
             )
-        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(input), "")
+        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(worldInfoInput), "")
         _state.update { it.copy(generating = true, error = null) }
         job = scope.launch {
             val acc = StringBuilder(prefix)
