@@ -13,8 +13,16 @@ import app.sillytavern.android.prompt.model.PromptManagerPreset
 import app.sillytavern.android.prompt.model.SystemPromptPreset
 import app.sillytavern.android.worldinfo.WorldInfoPrompt
 
-enum class Role { SYSTEM, USER, ASSISTANT }
-data class PromptMessage(val role: Role, val content: String)
+enum class Role { SYSTEM, USER, ASSISTANT, TOOL }
+
+/** [toolCalls] are on assistant messages that called tools; TOOL messages carry [toolCallId]/[toolName] of the call they answer. */
+data class PromptMessage(
+    val role: Role,
+    val content: String,
+    val toolCalls: List<app.sillytavern.android.api.Chunk.ToolCall> = emptyList(),
+    val toolCallId: String? = null,
+    val toolName: String? = null,
+)
 
 enum class GenerationMode { NORMAL, CONTINUE, IMPERSONATE }
 

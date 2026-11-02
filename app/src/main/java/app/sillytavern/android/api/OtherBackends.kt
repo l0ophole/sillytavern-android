@@ -31,8 +31,22 @@ class OllamaBackend(client: OkHttpClient) : HttpBackend(client) {
         val s = req.profile.sampler
         val body = buildJsonObject {
             put("model", req.profile.model)
-            put("messages", JsonArray(req.messages.map {
-                buildJsonObject { put("role", it.role.name.lowercase()); put("content", it.content) }
+            put("messages", JsonArray(req.messages.map { m ->
+                buildJsonObject {
+                    put("role", m.role.name.lowercase()); put("content", m.content)
+                    if (m.role == app.sillytavern.android.prompt.Role.ASSISTANT && m.toolCalls.isNotEmpty()) {
+                        put("tool_calls", JsonArray(m.toolCalls.map { c ->
+                            buildJsonObject { put("function", buildJsonObject { put("name", c.name); put("arguments", parseArgs(c.arguments)) }) }
+                        }))
+                    }
+                    if (m.role == app.sillytavern.android.prompt.Role.TOOL) m.toolName?.let { put("tool_name", it) }
+                }
+            }))
+            if (req.tools.isNotEmpty()) put("tools", JsonArray(req.tools.map {
+                buildJsonObject {
+                    put("type", "function")
+                    put("function", buildJsonObject { put("name", it.name); put("description", it.description); put("parameters", it.parameters) })
+                }
             }))
             put("stream", s.stream)
             when (req.profile.reasoning.effort) {
@@ -62,6 +76,11 @@ class OllamaBackend(client: OkHttpClient) : HttpBackend(client) {
             return buildList {
                 m["thinking"]?.strOrNull()?.takeIf { it.isNotEmpty() }?.let { add(Chunk.Reasoning(it)) }
                 m["content"]?.strOrNull()?.takeIf { it.isNotEmpty() }?.let { add(Chunk.Text(it)) }
+                (m["tool_calls"] as? JsonArray)?.forEachIndexed { i, tc ->
+                    val fn = (tc as? JsonObject)?.get("function") as? JsonObject ?: return@forEachIndexed
+                    val name = fn["name"]?.strOrNull() ?: return@forEachIndexed
+                    add(Chunk.ToolCall("$name-$i", name, (fn["arguments"] ?: JsonObject(emptyMap())).toString()))
+                }
             }
         }
 

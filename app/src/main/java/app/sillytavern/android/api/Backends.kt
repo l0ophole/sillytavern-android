@@ -31,6 +31,8 @@ data class GenerationRequest(
     val stopSequences: List<String> = profile.sampler.stopSequences,
     /** Text-completion sampler preset; Task 6 maps its fields into the request. */
     val sampler: TextGenSamplerPreset? = null,
+    /** Functions the model may call (chat-style backends only). */
+    val tools: List<ToolDef> = emptyList(),
 )
 
 /** One piece of a model response. */
@@ -195,6 +197,20 @@ private fun JsonObjectBuilder.putSamplerPreset(p: TextGenSamplerPreset) {
         ?.let { put("banned_strings", JsonArray(it.map(::JsonPrimitive))) }
 }
 
+internal fun openAiMessage(m: PromptMessage): JsonObject = buildJsonObject {
+    put("role", m.role.name.lowercase())
+    put("content", m.content)
+    if (m.role == Role.ASSISTANT && m.toolCalls.isNotEmpty()) {
+        put("tool_calls", JsonArray(m.toolCalls.map {
+            buildJsonObject {
+                put("id", it.id); put("type", "function")
+                put("function", buildJsonObject { put("name", it.name); put("arguments", it.arguments) })
+            }
+        }))
+    }
+    if (m.role == Role.TOOL) m.toolCallId?.let { put("tool_call_id", it) }
+}
+
 class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
     override fun buildRequest(req: GenerationRequest): Request {
         val s = req.profile.sampler
@@ -202,8 +218,12 @@ class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
         val reasonerOnly = provider.reasoningStyle == ReasoningStyle.DEEPSEEK && req.profile.model.contains("reasoner")
         val body = buildJsonObject {
             put("model", req.profile.model)
-            put("messages", JsonArray(req.messages.map {
-                buildJsonObject { put("role", it.role.name.lowercase()); put("content", it.content) }
+            put("messages", JsonArray(req.messages.map(::openAiMessage)))
+            if (req.tools.isNotEmpty()) put("tools", JsonArray(req.tools.map {
+                buildJsonObject {
+                    put("type", "function")
+                    put("function", buildJsonObject { put("name", it.name); put("description", it.description); put("parameters", it.parameters) })
+                }
             }))
             if (reasonerOnly) { // deepseek-reasoner rejects/ignores sampler parameters
                 put("max_tokens", s.maxResponseTokens)
@@ -240,15 +260,25 @@ class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
     }
 
     override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
+        private val tools = ToolCallAssembler()
+
         override fun parse(event: JsonObject): List<Chunk> {
             val choice = (event["choices"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return emptyList()
             val node = (if (streaming) choice["delta"] else choice["message"]) as? JsonObject ?: return emptyList()
+            (node["tool_calls"] as? JsonArray)?.forEachIndexed { i, tc ->
+                val o = tc as? JsonObject ?: return@forEachIndexed
+                val fn = o["function"] as? JsonObject
+                val idx = (o["index"] as? JsonPrimitive)?.intOrNull ?: i
+                tools.add(idx, o["id"]?.strOrNull(), fn?.get("name")?.strOrNull(), fn?.get("arguments")?.let { it.strOrNull() ?: it.toString() })
+            }
             return buildList {
                 (node["reasoning_content"] ?: node["reasoning"])?.strOrNull()?.takeIf { it.isNotEmpty() }
                     ?.let { add(Chunk.Reasoning(it)) }
                 node["content"]?.strOrNull()?.takeIf { it.isNotEmpty() }?.let { add(Chunk.Text(it)) }
             }
         }
+
+        override fun finish(): List<Chunk> = tools.finish()
     }
 }
 
@@ -280,12 +310,15 @@ class TextCompletionBackend(client: OkHttpClient) : HttpBackend(client) {
 
 class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
     override fun buildRequest(req: GenerationRequest): Request {
-        val (system, turns) = toAnthropicMessages(req.messages)
+        val (system, turns) = toAnthropicTurns(req.messages)
         val s = req.profile.sampler
         val body = buildJsonObject {
             put("model", req.profile.model)
             if (system.isNotBlank()) put("system", system)
-            put("messages", JsonArray(turns.map { buildJsonObject { put("role", it.first); put("content", it.second) } }))
+            put("messages", JsonArray(turns))
+            if (req.tools.isNotEmpty()) put("tools", JsonArray(req.tools.map {
+                buildJsonObject { put("name", it.name); put("description", it.description); put("input_schema", it.parameters) }
+            }))
             val thinking = req.profile.reasoning.budgetTokens
             put("max_tokens", if (thinking > 0) maxOf(s.maxResponseTokens, thinking + 1) else s.maxResponseTokens)
             if (thinking > 0) {
@@ -306,6 +339,8 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
     }
 
     override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
+        private val tools = ToolCallAssembler()
+
         override fun parse(event: JsonObject): List<Chunk> {
             if (!streaming) {
                 return ((event["content"] as? JsonArray) ?: return emptyList()).mapNotNull { b ->
@@ -313,23 +348,70 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
                     when (o["type"]?.strOrNull()) {
                         "thinking" -> o["thinking"]?.strOrNull()?.let { Chunk.Reasoning(it) }
                         "text" -> o["text"]?.strOrNull()?.let { Chunk.Text(it) }
+                        "tool_use" -> o["name"]?.strOrNull()?.let { Chunk.ToolCall(o["id"]?.strOrNull() ?: it, it, (o["input"] ?: JsonObject(emptyMap())).toString()) }
                         else -> null
                     }
                 }
             }
-            if (event["type"]?.strOrNull() != "content_block_delta") return emptyList()
+            val index = (event["index"] as? JsonPrimitive)?.intOrNull ?: 0
+            when (event["type"]?.strOrNull()) {
+                "content_block_start" -> {
+                    val cb = event["content_block"] as? JsonObject
+                    if (cb?.get("type")?.strOrNull() == "tool_use") tools.add(index, cb["id"]?.strOrNull(), cb["name"]?.strOrNull(), null)
+                    return emptyList()
+                }
+                "content_block_delta" -> {}
+                else -> return emptyList()
+            }
             val d = event["delta"] as? JsonObject ?: return emptyList()
             return when (d["type"]?.strOrNull()) {
                 "thinking_delta" -> d["thinking"]?.strOrNull()?.let { listOf(Chunk.Reasoning(it)) }
+                "input_json_delta" -> { tools.add(index, null, null, d["partial_json"]?.strOrNull() ?: ""); null }
                 "text_delta", null -> d["text"]?.strOrNull()?.let { listOf(Chunk.Text(it)) }
                 else -> null
             } ?: emptyList()
         }
 
+        override fun finish(): List<Chunk> = tools.finish()
+
         override fun isDone(event: JsonObject) = event["type"]?.strOrNull() == "message_stop"
     }
 
     companion object {
+        /**
+         * Like [toAnthropicMessages] but supports tool calls/results: assistant tool calls become `tool_use` blocks and
+         * TOOL messages become `tool_result` blocks inside a user turn.
+         */
+        fun toAnthropicTurns(messages: List<PromptMessage>): Pair<String, List<JsonObject>> {
+            if (messages.none { it.role == Role.TOOL || it.toolCalls.isNotEmpty() }) {
+                val (sys, turns) = toAnthropicMessages(messages)
+                return sys to turns.map { buildJsonObject { put("role", it.first); put("content", it.second) } }
+            }
+            val leading = messages.takeWhile { it.role == Role.SYSTEM }
+            val system = leading.joinToString("\n\n") { it.content }
+            val turns = mutableListOf<Pair<String, MutableList<JsonObject>>>()
+            fun add(role: String, block: JsonObject) {
+                if (turns.isNotEmpty() && turns.last().first == role) turns.last().second += block else turns += role to mutableListOf(block)
+            }
+            fun textBlock(t: String) = buildJsonObject { put("type", "text"); put("text", t) }
+            for (m in messages.drop(leading.size)) when {
+                m.role == Role.TOOL -> add("user", buildJsonObject {
+                    put("type", "tool_result"); put("tool_use_id", m.toolCallId ?: ""); put("content", m.content)
+                })
+                m.role == Role.ASSISTANT -> {
+                    if (m.content.isNotBlank()) add("assistant", textBlock(m.content))
+                    m.toolCalls.forEach { c ->
+                        add("assistant", buildJsonObject {
+                            put("type", "tool_use"); put("id", c.id); put("name", c.name); put("input", parseArgs(c.arguments))
+                        })
+                    }
+                }
+                else -> add("user", textBlock(m.content))
+            }
+            if (turns.isEmpty() || turns.first().first != "user") turns.add(0, "user" to mutableListOf(textBlock("[Start a new chat]")))
+            return system to turns.map { (role, blocks) -> buildJsonObject { put("role", role); put("content", JsonArray(blocks)) } }
+        }
+
         /**
          * Anthropic wants one top-level system string and strictly alternating user/assistant turns that start
          * with user. The leading system message becomes `system`; later system messages are sent as user turns.

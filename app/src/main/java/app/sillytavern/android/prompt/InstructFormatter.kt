@@ -36,7 +36,7 @@ object InstructFormatter {
                 val side = when (m.role) {
                     Role.SYSTEM -> Side.SYSTEM
                     // Undo PromptBuilder's role flip so names/sequences reflect who actually speaks.
-                    Role.USER -> if (impersonate) Side.CHAR else Side.USER
+                    Role.USER, Role.TOOL -> if (impersonate) Side.CHAR else Side.USER
                     Role.ASSISTANT -> if (impersonate) Side.USER else Side.CHAR
                 }
                 add(Turn(side, m.content))
