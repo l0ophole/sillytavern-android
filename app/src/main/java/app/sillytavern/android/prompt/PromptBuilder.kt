@@ -5,7 +5,10 @@ import app.sillytavern.android.chat.ChatMessage
 import app.sillytavern.android.chat.MacroContext
 import app.sillytavern.android.chat.Macros
 import app.sillytavern.android.data.Persona
+import app.sillytavern.android.data.DefaultPresets
 import app.sillytavern.android.data.PromptPreset
+import app.sillytavern.android.prompt.model.PromptManagerPreset
+import app.sillytavern.android.prompt.model.SystemPromptPreset
 
 enum class Role { SYSTEM, USER, ASSISTANT }
 data class PromptMessage(val role: Role, val content: String)
@@ -21,6 +24,8 @@ data class PromptInput(
     val maxResponseTokens: Int,
     val counter: TokenCounter,
     val mode: GenerationMode = GenerationMode.NORMAL,
+    val promptManager: PromptManagerPreset = DefaultPresets.promptManager(),
+    val systemPrompt: SystemPromptPreset? = null,
 )
 
 /** Builds the provider-neutral prompt: system block, trimmed history, post-history instructions. */
