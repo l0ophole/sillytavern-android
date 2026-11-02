@@ -59,6 +59,28 @@
 ## Not verified (set 3)
 - UI not run on a device/emulator; no comparison against real SillyTavern output for the same book + chat
 
+## Done (feature set 4: backends) — plan: docs/plans/03-backends.md
+- Streaming core: `Chunk` (Text / Reasoning / ToolCall), `ChunkBackend`, per-call stateful `EventParser`, SSE and NDJSON formats; the old `Backend.generate(): Flow<String>` still works (text only)
+- Provider registry (`Providers`): OpenAI, Claude, Google, OpenRouter, Mistral, Groq, DeepSeek, xAI, Cohere (compat endpoint), Perplexity, Together, Fireworks, NVIDIA NIM, Moonshot, custom OpenAI-compatible; text-completion servers (TabbyAPI, Aphrodite, llama.cpp, ooba, vLLM, generic); Ollama, KoboldCpp, KoboldAI classic, NovelAI, AI Horde. OpenRouter attribution headers; DeepSeek reasoner drops sampler params
+- New backends: Google Gemini (native, safety off, system instruction, thinking config), Ollama native `/api/chat`, Kobold (stream + classic, sampler preset mapping), NovelAI (stop strings applied client-side), AI Horde (async submit + poll, DELETE on cancel)
+- Reasoning: captured from `reasoning_content`/`reasoning` (OpenAI-compatible), Anthropic `thinking`, Gemini thought parts, Ollama `thinking`; requested via per-connection effort + budget; stored in `extra.reasoning` (ST's key); collapsed "Thinking" section in the message bubble
+- Model list fetch for every backend type; "Fetch models" button in the connection dialog (picker not yet a list — see below)
+- Tool calling plumbing: `ToolDef`/`ToolRegistry`/`ToolLoop` (max 5 rounds), wire formats for OpenAI, Anthropic, Gemini, Ollama, split-argument assembly. `ChatController` takes a `ToolRegistry` (default empty, so no behaviour change until set 5/12 registers tools)
+- Tests: 257 JVM unit tests total, lint has no errors, debug APK builds
+
+## Rulings / deviations (set 4)
+- Reasoning is stored per message, not per swipe: paging through old swipes shows the reasoning of the last generated reply; a new generation clears it, continue keeps it
+- Tool calls are only exercised by unit tests with scripted backends — no user-visible tool exists yet
+- "Fetch models" shows the fetched count/error but the connection dialog still has a free-text model field; fetched ids are not yet selectable from a list (see Not verified / follow-ups)
+- NovelAI: no token-id stop sequences, preset library or tokenizer; Horde: no worker/kudos selection, anonymous key by default, max_length capped at 512 and context at 16384
+- Claude prefill/cache control, image inputs, Vertex AI and OAuth providers not implemented
+- Tests for Tasks 1-7 were written together with (not before) the implementation; self-review only, no reviewer subagent
+- `ConnectionProfile.provider` defaults to "custom"; old profiles map to a generic provider of their own type
+
+## Not verified (set 4)
+- Nothing run against a real service or on a device/emulator: all backends are tested against MockWebServer with hand-written payloads based on ST's source and public API docs, so real-world quirks (extra fields, error shapes, rate limits) may still surface
+- The provider dropdown / reasoning chips / thinking bubble UI compile and pass lint but were never seen on a screen
+
 ## Deviations from plan 00 (to confirm)
 - No Hilt yet: manual `AppContainer` (simpler; revisit when graph grows)
 - Ktor client not added: OkHttp only

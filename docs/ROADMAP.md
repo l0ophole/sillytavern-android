@@ -7,7 +7,7 @@ Sets are small and ordered by dependency. Each set gets a plan in docs/plans/ be
 | 1 | MVP | cards, chat, 3 backends, prompt, personas, presets | - | all |
 | 2 | Prompt engine (DONE) | instruct/context templates, system-prompt presets, full Prompt Manager (ordering, toggles, injection depth), text-completion samplers/presets import/export | 1 | 3,4,5 |
 | 3 | World Info (DONE) | lorebooks (keys, regex, recursion, depth, budget), char-attached books, global books, import/export | 2 | 6 |
-| 4 | Backends | Google, OpenRouter, Mistral, Cohere, Groq, DeepSeek, etc.; KoboldAI, NovelAI, Horde, Ollama native, tabby/aphrodite; model list fetch; reasoning/thinking display; tool calling | 2 | - |
+| 4 | Backends (DONE) | Google, OpenRouter, Mistral, Cohere, Groq, DeepSeek, etc.; KoboldAI, NovelAI, Horde, Ollama native, tabby/aphrodite; model list fetch; reasoning/thinking display; tool calling | 2 | - |
 | 5 | Macros + commands | full macro set, variables, slash-command engine, Quick Replies, regex scripts | 2 | 6,12 |
 | 6 | Groups + tags | group chats, activation strategies, tags/folders, character bulk ops, favorites | 3,5 | - |
 | 7 | Chat features | message bookmarks/checkpoints/branches, hide messages, chat import/export (ST JSONL, other formats), personas with avatars/lock, author's note, summarization | 2 | 9 |
