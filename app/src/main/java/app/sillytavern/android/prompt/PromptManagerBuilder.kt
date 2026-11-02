@@ -5,6 +5,7 @@ import app.sillytavern.android.chat.Macros
 import app.sillytavern.android.prompt.model.PromptDefinition
 import app.sillytavern.android.prompt.model.PromptManagerPreset
 import app.sillytavern.android.prompt.model.SystemPromptPreset
+import app.sillytavern.android.worldinfo.WorldInfoPrompt
 
 /** Shared helpers for building prompts. */
 internal object PromptSupport {
@@ -12,7 +13,22 @@ internal object PromptSupport {
         user = i.persona.name, char = i.card.name,
         description = i.card.description, personality = i.card.personality,
         scenario = i.card.scenario, persona = i.persona.description,
+        outlets = i.worldInfo.outlets,
     )
+
+    /** World Info depth entries as (depth from end) -> messages. */
+    fun depthInjections(wi: WorldInfoPrompt): Map<Int, List<PromptMessage>> = wi.depth.filter { it.content.isNotBlank() }
+        .groupBy({ it.depth }, { PromptMessage(when (it.role) { 1 -> Role.USER; 2 -> Role.ASSISTANT; else -> Role.SYSTEM }, it.content) })
+
+    /** Inserts [injections] (depth counted from the end; deeper than the chat lands first, 0 last). */
+    fun injectAtDepth(kept: List<PromptMessage>, injections: Map<Int, List<PromptMessage>>): List<PromptMessage> = buildList {
+        kept.forEachIndexed { idx, m ->
+            injections[kept.size - idx]?.let { addAll(it) }
+            add(m)
+        }
+        addAll(0, injections.filterKeys { it > kept.size }.toSortedMap(compareByDescending { it }).values.flatten())
+        injections[0]?.let { addAll(it) }
+    }
 
     /** Keeps the newest messages that fit [budget]; the very last message is always kept. */
     fun trimHistory(msgs: List<PromptMessage>, budget: Int, counter: TokenCounter): List<PromptMessage> {
@@ -46,7 +62,11 @@ object PromptManagerBuilder {
             "charPersonality" -> if (i.card.personality.isBlank()) "" else pm.personalityFormat
             "scenario" -> if (i.card.scenario.isBlank()) "" else pm.scenarioFormat
             "personaDescription" -> i.persona.description
-            "dialogueExamples" -> i.card.messageExample.takeIf { it.isNotBlank() }?.let { "${pm.newExampleChatPrompt}\n$it" } ?: ""
+            "dialogueExamples" -> (i.worldInfo.exampleTop +
+                listOfNotNull(i.card.messageExample.takeIf { it.isNotBlank() }?.let { "${pm.newExampleChatPrompt}\n$it" }) +
+                i.worldInfo.exampleBottom).joinToString("\n")
+            "worldInfoBefore" -> wiFormat(i.worldInfo.before, pm)
+            "worldInfoAfter" -> wiFormat(i.worldInfo.after, pm)
             else -> if (d.marker) "" else d.content
         }
         fun message(d: PromptDefinition): PromptMessage? =
@@ -63,6 +83,8 @@ object PromptManagerBuilder {
             .mapNotNull { d -> message(d)?.let { d.injectionDepth to it } }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, ms) -> ms.groupBy { it.role }.map { (r, l) -> PromptMessage(r, l.joinToString("\n") { it.content }) } }
+            .let { base -> (base.keys + PromptSupport.depthInjections(i.worldInfo).keys).associateWith { d ->
+                base[d].orEmpty() + PromptSupport.depthInjections(i.worldInfo)[d].orEmpty() } }
 
         val nudge = when (i.mode) {
             GenerationMode.IMPERSONATE -> x(pm.impersonationPrompt)
@@ -82,19 +104,12 @@ object PromptManagerBuilder {
         val kept = if (histIdx < 0) emptyList() else PromptSupport.trimHistory(history, budget, i.counter)
             .map { if (pm.namesBehavior == 2) withName(it, i) else it }
 
-        val withInjections = buildList {
-            kept.forEachIndexed { idx, m ->
-                injections[kept.size - idx]?.let { addAll(it) }
-                add(m)
-            }
-            // Depth beyond the chat length lands at the very start; depth 0 at the very end.
-            val deepest = injections.filterKeys { it > kept.size }.toSortedMap(compareByDescending { it }).values.flatten()
-            addAll(0, deepest)
-            injections[0]?.let { addAll(it) }
-        }
+        val withInjections = PromptSupport.injectAtDepth(kept, injections)
         val result = pre + listOfNotNull(newChat) + withInjections + post + listOfNotNull(nudge)
         return if (pm.squashSystemMessages) squash(result) else result
     }
+
+    private fun wiFormat(text: String, pm: PromptManagerPreset) = if (text.isBlank()) "" else pm.wiFormat.replace("{0}", text)
 
     private fun withName(m: PromptMessage, i: PromptInput): PromptMessage {
         val impersonate = i.mode == GenerationMode.IMPERSONATE

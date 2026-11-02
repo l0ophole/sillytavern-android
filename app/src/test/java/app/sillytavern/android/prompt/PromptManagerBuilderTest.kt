@@ -117,4 +117,40 @@ class PromptManagerBuilderTest {
         val out = PromptManagerBuilder.build(input(mode = GenerationMode.CONTINUE))
         assertTrue(out.last().content.startsWith("[Continue your last message"))
     }
+
+    @Test fun worldInfoMarkersFilled() {
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(before = "BEFORE", after = "AFTER")
+        val t = texts(PromptManagerBuilder.build(input().copy(worldInfo = wi)))
+        val d = t.indexOf("Ann is kind.")
+        assertTrue(t.indexOf("BEFORE") in 0 until d)
+        assertTrue(t.indexOf("AFTER") > d)
+    }
+
+    @Test fun worldInfoDepthInjectedAtDepth() {
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(depth = listOf(app.sillytavern.android.worldinfo.DepthInjection(1, 0, "LORE")))
+        val t = texts(PromptManagerBuilder.build(input().copy(worldInfo = wi)))
+        assertEquals("LORE", t[t.lastIndex - 1]); assertEquals("Fine", t.last())
+    }
+
+    @Test fun wiFormatApplied() {
+        val pm = DefaultPresets.promptManager().copy(wiFormat = "[Lore]\n{0}")
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(before = "BEFORE")
+        assertTrue("[Lore]\nBEFORE" in texts(PromptManagerBuilder.build(input(pm).copy(worldInfo = wi))))
+    }
+
+    @Test fun emptyWorldInfoChangesNothing() {
+        assertEquals(PromptManagerBuilder.build(input()), PromptManagerBuilder.build(input().copy(worldInfo = app.sillytavern.android.worldinfo.WorldInfoPrompt())))
+    }
+
+    @Test fun exampleAnchorsWrapDialogueExamples() {
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(exampleTop = listOf("TOP"), exampleBottom = listOf("BOT"))
+        val ex = texts(PromptManagerBuilder.build(input().copy(worldInfo = wi))).first { "Ann: hi" in it }
+        assertTrue(ex.indexOf("TOP") < ex.indexOf("Ann: hi") && ex.indexOf("Ann: hi") < ex.indexOf("BOT"))
+    }
+
+    @Test fun outletMacroExpands() {
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(outlets = mapOf("o" to "OUTLET"))
+        val pm = pmOf(p("a", "x {{outlet::o}} y {{outlet::none}}"), history, order = ord("a", "chatHistory"))
+        assertEquals("x OUTLET y", texts(PromptManagerBuilder.build(input(pm, hist.take(1)).copy(worldInfo = wi))).first())
+    }
 }

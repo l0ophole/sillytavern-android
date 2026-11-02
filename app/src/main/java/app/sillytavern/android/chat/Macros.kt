@@ -16,6 +16,7 @@ data class MacroContext(
     val persona: String = "",
     val now: LocalDateTime = LocalDateTime.now(),
     val random: Random = Random.Default,
+    val outlets: Map<String, String> = emptyMap(),
 )
 
 /** Basic SillyTavern macro engine (subset). Unknown macros are left untouched. */
@@ -52,6 +53,7 @@ object Macros {
             lower == "isotime" -> c.now.format(DateTimeFormatter.ofPattern("HH:mm"))
             lower == "isodate" -> c.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
             lower == "weekday" -> c.now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+            lower.startsWith("outlet::") -> c.outlets[body.substring(8).trim()] ?: ""
             body.startsWith("//") -> ""
             lower.startsWith("random::") -> body.substring(8).split("::").randomOrNull(c.random) ?: ""
             lower.startsWith("random:") -> body.substring(7).split(",").map { it.trim() }.randomOrNull(c.random) ?: ""

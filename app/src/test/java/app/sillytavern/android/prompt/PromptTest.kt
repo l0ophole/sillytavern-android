@@ -44,4 +44,11 @@ class PromptTest {
     }
 
     @Test fun tiktokenCountsExactly() = assertEquals(1, TiktokenCounter().count("hello"))
+
+    @Test fun textCompletionStoryStringGetsWiVars() {
+        val wi = app.sillytavern.android.worldinfo.WorldInfoPrompt(before = "B", after = "A")
+        val ctx = app.sillytavern.android.prompt.model.ContextTemplate(storyString = "{{wiBefore}}|{{wiAfter}}")
+        val out = PromptBuilder.buildText(input(listOf(ChatMessage.user("Bob", "hey"))).copy(worldInfo = wi), null, ctx)
+        assertTrue(out.text, out.text.contains("B|A"))
+    }
 }

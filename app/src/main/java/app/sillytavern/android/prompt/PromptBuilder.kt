@@ -11,6 +11,7 @@ import app.sillytavern.android.prompt.model.ContextTemplate
 import app.sillytavern.android.prompt.model.InstructTemplate
 import app.sillytavern.android.prompt.model.PromptManagerPreset
 import app.sillytavern.android.prompt.model.SystemPromptPreset
+import app.sillytavern.android.worldinfo.WorldInfoPrompt
 
 enum class Role { SYSTEM, USER, ASSISTANT }
 data class PromptMessage(val role: Role, val content: String)
@@ -28,6 +29,7 @@ data class PromptInput(
     val mode: GenerationMode = GenerationMode.NORMAL,
     val promptManager: PromptManagerPreset = DefaultPresets.promptManager(),
     val systemPrompt: SystemPromptPreset? = null,
+    val worldInfo: WorldInfoPrompt = WorldInfoPrompt(),
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
@@ -48,10 +50,11 @@ object PromptBuilder {
             "personality" to if (i.card.personality.isBlank()) "" else x(pm.personalityFormat),
             "scenario" to if (i.card.scenario.isBlank()) "" else x(pm.scenarioFormat),
             "persona" to x(i.persona.description),
-            "wiBefore" to "", "wiAfter" to "", "anchorBefore" to "", "anchorAfter" to "",
+            "wiBefore" to i.worldInfo.before, "wiAfter" to i.worldInfo.after, "anchorBefore" to "", "anchorAfter" to "",
         )
-        val examples = i.card.messageExample.takeIf { it.isNotBlank() }
-            ?.let { listOf("${x(pm.newExampleChatPrompt)}\n${x(it)}") }.orEmpty()
+        val examples = i.worldInfo.exampleTop +
+            i.card.messageExample.takeIf { it.isNotBlank() }?.let { listOf("${x(pm.newExampleChatPrompt)}\n${x(it)}") }.orEmpty() +
+            i.worldInfo.exampleBottom
         val post = listOf(
             i.card.postHistoryInstructions.ifBlank { i.systemPrompt?.postHistory?.ifBlank { jailbreakContent() } ?: jailbreakContent() },
             when (i.mode) {
@@ -65,7 +68,11 @@ object PromptBuilder {
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
             PromptMessage(if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
         }
-        val kept = PromptSupport.trimHistory(all, i.maxContextTokens - i.maxResponseTokens - fixedTokens, i.counter)
+        val wiInj = PromptSupport.depthInjections(i.worldInfo)
+        val wiTokens = wiInj.values.flatten().sumOf { i.counter.count(it.content) + 4 }
+        val kept = PromptSupport.injectAtDepth(
+            PromptSupport.trimHistory(all, i.maxContextTokens - i.maxResponseTokens - fixedTokens - wiTokens, i.counter), wiInj,
+        )
         return InstructFormatter.format(
             TextPromptParts(vars, examples, kept, post), instruct, context,
             i.persona.name, i.card.name, i.mode,
