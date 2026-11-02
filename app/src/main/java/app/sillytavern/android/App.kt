@@ -5,6 +5,7 @@ import app.sillytavern.android.api.Backends
 import app.sillytavern.android.card.CharacterRepository
 import app.sillytavern.android.chat.ChatController
 import app.sillytavern.android.chat.ChatRepository
+import app.sillytavern.android.worldinfo.WorldBookRepository
 import app.sillytavern.android.data.*
 import app.sillytavern.android.prompt.ApproxTokenCounter
 import app.sillytavern.android.prompt.TiktokenCounter
@@ -19,6 +20,7 @@ class AppContainer(app: Application) {
     val secrets = SecretStore(paths.secretsFile, AesGcmCrypto.keystore())
     val characters = CharacterRepository(paths)
     val chats = ChatRepository(paths)
+    val worlds = WorldBookRepository(paths)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 

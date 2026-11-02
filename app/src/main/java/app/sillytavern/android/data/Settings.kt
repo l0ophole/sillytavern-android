@@ -1,6 +1,7 @@
 package app.sillytavern.android.data
 
 import app.sillytavern.android.prompt.model.*
+import app.sillytavern.android.worldinfo.WorldInfoSettings
 import java.io.File
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -74,6 +75,11 @@ data class AppSettings(
     val activeSystemPromptName: String? = null,
     val samplerPresets: List<TextGenSamplerPreset> = DefaultPresets.samplerPresets(),
     val activeSamplerPresetName: String? = null,
+    // --- World Info (feature set 3) ---
+    val worldInfo: WorldInfoSettings = WorldInfoSettings(),
+    val globalWorldBooks: List<String> = emptyList(),
+    /** Extra books per character file name (SillyTavern's `charLore`). */
+    val characterExtraBooks: Map<String, List<String>> = emptyMap(),
 ) {
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()
     val activePersona get() = personas.firstOrNull { it.id == activePersonaId } ?: personas.first()

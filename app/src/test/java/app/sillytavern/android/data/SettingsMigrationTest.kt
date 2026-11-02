@@ -39,4 +39,11 @@ class SettingsMigrationTest {
         assertTrue(DefaultPresets.systemPrompts().isNotEmpty())
         assertTrue(DefaultPresets.samplerPresets().any { it.name == "Universal-Creative" })
     }
+
+    @Test fun oldSettingsGetWorldInfoDefaults() {
+        val f = Files.createTempFile("settings", ".json").toFile()
+        f.writeText("""{"activeInstructName":"x"}""")
+        val s = SettingsRepository(f).settings.value
+        assertEquals(25, s.worldInfo.budget); assertEquals(2, s.worldInfo.depth); assertTrue(s.globalWorldBooks.isEmpty())
+    }
 }
