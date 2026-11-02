@@ -44,7 +44,7 @@ class ChatController(
         val loaded = when {
             chatFile != null -> repo.load(chatFile)
             else -> repo.list(character.fileName).firstOrNull()?.let(repo::load)
-                ?: repo.create(character.fileName, character.card.name, s.activePersona.name, character.card.firstMessage)
+                ?: createChat(character, s.activePersona.name)
         }
         _state.value = ChatUiState(character = character, chat = loaded)
     }
@@ -52,7 +52,27 @@ class ChatController(
     fun newChat() {
         val c = _state.value.character ?: return
         stop()
-        _state.value = ChatUiState(character = c, chat = repo.create(c.fileName, c.card.name, settings().activePersona.name, c.card.firstMessage))
+        _state.value = ChatUiState(character = c, chat = createChat(c, settings().activePersona.name))
+    }
+
+    /** New chat seeded with the first greeting; alternate greetings become swipes of it (as in SillyTavern). */
+    private fun createChat(c: StoredCharacter, userName: String): Chat {
+        val greetings = c.card.greetings
+        val chat = repo.create(c.fileName, c.card.name, userName, greetings.firstOrNull())
+        if (greetings.size < 2) return chat
+        val first = chat.messages.first().copy(swipes = greetings, swipeId = 0)
+        return chat.copy(messages = listOf(first)).also(repo::save)
+    }
+
+    /** Chat files for the open character, newest first. */
+    fun chatFiles(): List<File> = _state.value.character?.let { repo.list(it.fileName) }.orEmpty()
+
+    fun deleteChatFile(file: File) {
+        repo.delete(file)
+        if (file == chat?.file) {
+            val c = _state.value.character ?: return
+            open(c)
+        }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }
