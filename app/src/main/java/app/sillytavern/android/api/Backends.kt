@@ -74,6 +74,7 @@ object Backends {
         BackendType.OPENAI -> OpenAiBackend(client)
         BackendType.ANTHROPIC -> AnthropicBackend(client)
         BackendType.TEXT_COMPLETION -> TextCompletionBackend(client)
+        BackendType.GOOGLE -> GeminiBackend(client)
     }
 }
 

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 @Serializable
-enum class BackendType { OPENAI, ANTHROPIC, TEXT_COMPLETION }
+enum class BackendType { OPENAI, ANTHROPIC, TEXT_COMPLETION, GOOGLE }
 
 /** Sampler settings shared by all backends; unused fields are ignored per backend. */
 @Serializable

@@ -20,6 +20,7 @@ object Providers {
     val all: List<Provider> = listOf(
         Provider("openai", "OpenAI", BackendType.OPENAI, "https://api.openai.com/v1", reasoningStyle = ReasoningStyle.OPENAI_EFFORT),
         Provider("anthropic", "Claude (Anthropic)", BackendType.ANTHROPIC, "https://api.anthropic.com/v1"),
+        Provider("google", "Google AI Studio (Gemini)", BackendType.GOOGLE, "https://generativelanguage.googleapis.com/v1beta"),
         Provider(
             "openrouter", "OpenRouter", BackendType.OPENAI, "https://openrouter.ai/api/v1",
             reasoningStyle = ReasoningStyle.OPENROUTER,
@@ -55,6 +56,7 @@ object Providers {
             BackendType.OPENAI -> byId("custom")
             BackendType.ANTHROPIC -> byId("anthropic")
             BackendType.TEXT_COMPLETION -> byId("textgen")
+            BackendType.GOOGLE -> byId("google")
         }
     }
 

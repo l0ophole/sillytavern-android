@@ -1,5 +1,6 @@
 package app.sillytavern.android.ui
 
+import app.sillytavern.android.api.Providers
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -105,11 +106,7 @@ private fun ConnectionDialog(c: AppContainer, p: ConnectionProfile, onDismiss: (
     var maxTok by remember { mutableStateOf(sm.maxResponseTokens.toString()) }
     var stream by remember { mutableStateOf(sm.stream) }
 
-    fun defaultUrl(t: BackendType) = when (t) {
-        BackendType.OPENAI -> "https://api.openai.com/v1"
-        BackendType.ANTHROPIC -> "https://api.anthropic.com/v1"
-        BackendType.TEXT_COMPLETION -> "http://127.0.0.1:5001/v1"
-    }
+    fun defaultUrl(t: BackendType) = Providers.ofType(t).first().baseUrl
 
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Connection") },
@@ -123,7 +120,7 @@ private fun ConnectionDialog(c: AppContainer, p: ConnectionProfile, onDismiss: (
                             if (url == defaultUrl(type)) url = defaultUrl(t)
                             type = t
                         }, SegmentedButtonDefaults.itemShape(i, BackendType.entries.size)) {
-                            Text(when (t) { BackendType.OPENAI -> "OpenAI"; BackendType.ANTHROPIC -> "Claude"; BackendType.TEXT_COMPLETION -> "Text" }, maxLines = 1)
+                            Text(Providers.ofType(t).first().label.substringBefore(" ("), maxLines = 1)
                         }
                     }
                 }
