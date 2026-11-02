@@ -28,6 +28,13 @@ data class SamplerSettings(
     val stream: Boolean = true,
 )
 
+/** Reasoning/thinking request options. [effort] is auto|min|low|medium|high|max; "auto" sends nothing. */
+@Serializable
+data class ReasoningSettings(
+    val effort: String = "auto",
+    val budgetTokens: Int = 0,
+)
+
 @Serializable
 data class ConnectionProfile(
     val id: String = UUID.randomUUID().toString(),
@@ -36,6 +43,7 @@ data class ConnectionProfile(
     val baseUrl: String = "https://api.openai.com/v1",
     val model: String = "",
     val sampler: SamplerSettings = SamplerSettings(),
+    val reasoning: ReasoningSettings = ReasoningSettings(),
 )
 
 @Serializable

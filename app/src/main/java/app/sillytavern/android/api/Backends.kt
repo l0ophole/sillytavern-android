@@ -10,7 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.serialization.json.*
 import okhttp3.*
@@ -30,10 +32,34 @@ data class GenerationRequest(
     val sampler: TextGenSamplerPreset? = null,
 )
 
+/** One piece of a model response. */
+sealed interface Chunk {
+    data class Text(val text: String) : Chunk
+    data class Reasoning(val text: String) : Chunk
+    data class ToolCall(val id: String, val name: String, val arguments: String) : Chunk
+}
+
 /** Streams generated text as incremental deltas (a single delta when streaming is off). */
 fun interface Backend {
     fun generate(req: GenerationRequest): Flow<String>
 }
+
+/** A backend that can also report reasoning and tool calls; [generate] keeps only the text. */
+interface ChunkBackend : Backend {
+    fun chunks(req: GenerationRequest): Flow<Chunk>
+    override fun generate(req: GenerationRequest): Flow<String> =
+        chunks(req).filterIsInstance<Chunk.Text>().map { it.text }
+}
+
+/** Per-call, stateful translator from one decoded JSON event to chunks. */
+interface EventParser {
+    fun parse(event: JsonObject): List<Chunk>
+    /** Chunks held back until the stream ended (e.g. assembled tool calls). */
+    fun finish(): List<Chunk> = emptyList()
+    fun isDone(event: JsonObject): Boolean = false
+}
+
+enum class StreamFormat { SSE, NDJSON }
 
 object Backends {
     val defaultClient: OkHttpClient by lazy {
@@ -52,16 +78,16 @@ object Backends {
 
 private val JSON_MEDIA = "application/json".toMediaType()
 
-/** Shared HTTP/SSE plumbing. Subclasses supply the request and a parser for each JSON event. */
-abstract class HttpBackend(private val client: OkHttpClient) : Backend {
+/** Shared HTTP plumbing (SSE or NDJSON). Subclasses supply the request and a parser for each JSON event. */
+abstract class HttpBackend(private val client: OkHttpClient) : ChunkBackend {
     protected val json = Json { ignoreUnknownKeys = true }
 
     protected abstract fun buildRequest(req: GenerationRequest): Request
-    /** Returns the text delta in one streamed event (or whole non-stream response), or null. */
-    protected abstract fun parseEvent(event: JsonObject, streaming: Boolean): String?
-    protected open fun isDone(event: JsonObject): Boolean = false
+    protected abstract fun parser(req: GenerationRequest, streaming: Boolean): EventParser
+    protected open val streamFormat: StreamFormat = StreamFormat.SSE
+    protected open fun isStreaming(req: GenerationRequest): Boolean = req.profile.sampler.stream
 
-    override fun generate(req: GenerationRequest): Flow<String> = flow {
+    override fun chunks(req: GenerationRequest): Flow<Chunk> = flow {
         val call = client.newCall(buildRequest(req))
         currentCoroutineContext()[Job]?.invokeOnCompletion { call.cancel() }
         val response = try {
@@ -72,23 +98,33 @@ abstract class HttpBackend(private val client: OkHttpClient) : Backend {
         response.use { r ->
             val body = r.body ?: throw BackendException("Empty response")
             if (!r.isSuccessful) throw BackendException("HTTP ${r.code}: ${errorText(body.string())}")
-            if (req.profile.sampler.stream) {
+            val streaming = isStreaming(req)
+            val parser = parser(req, streaming)
+            if (streaming) {
                 val source = body.source()
-                while (!source.exhausted()) {
+                loop@ while (!source.exhausted()) {
                     val line = source.readUtf8Line() ?: break
-                    if (!line.startsWith("data:")) continue
-                    val payload = line.removePrefix("data:").trim()
+                    val payload = when (streamFormat) {
+                        StreamFormat.SSE -> if (line.startsWith("data:")) line.removePrefix("data:").trim() else continue@loop
+                        StreamFormat.NDJSON -> line.trim()
+                    }
                     if (payload.isEmpty()) continue
                     if (payload == "[DONE]") break
                     val ev = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
-                    ev["error"]?.let { throw BackendException(errorText(it.toString())) }
-                    parseEvent(ev, true)?.takeIf { it.isNotEmpty() }?.let { emit(it) }
-                    if (isDone(ev)) break
+                    ev["error"]?.let { throw BackendException(errorText(ev.toString())) }
+                    parser.parse(ev).forEach { c -> if (c !is Chunk.Text || c.text.isNotEmpty()) emit(c) }
+                    if (parser.isDone(ev)) break
                 }
             } else {
-                val ev = json.parseToJsonElement(body.string()).jsonObject
-                parseEvent(ev, false)?.let { emit(it) }
+                val ev = try {
+                    json.parseToJsonElement(body.string()).jsonObject
+                } catch (e: Exception) {
+                    throw BackendException("Unreadable response: ${e.message}", e)
+                }
+                ev["error"]?.let { throw BackendException(errorText(ev.toString())) }
+                parser.parse(ev).forEach { emit(it) }
             }
+            parser.finish().forEach { emit(it) }
         }
     }.flowOn(Dispatchers.IO)
 
@@ -99,9 +135,9 @@ abstract class HttpBackend(private val client: OkHttpClient) : Backend {
 
     protected fun url(base: String, path: String) = base.trimEnd('/') + path
 
-    private fun errorText(raw: String): String = runCatching {
+    protected fun errorText(raw: String): String = runCatching {
         val o = json.parseToJsonElement(raw).jsonObject
-        val e = o["error"]
+        val e = o["error"] ?: o
         (e as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull
             ?: (e as? JsonPrimitive)?.contentOrNull ?: raw
     }.getOrDefault(raw).take(500)
@@ -174,10 +210,16 @@ class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
             req.apiKey?.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") } ?: emptyMap())
     }
 
-    override fun parseEvent(event: JsonObject, streaming: Boolean): String? {
-        val choice = event["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: return null
-        val node = if (streaming) choice["delta"] else choice["message"]
-        return node?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+    override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
+        override fun parse(event: JsonObject): List<Chunk> {
+            val choice = (event["choices"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return emptyList()
+            val node = (if (streaming) choice["delta"] else choice["message"]) as? JsonObject ?: return emptyList()
+            return buildList {
+                (node["reasoning_content"] ?: node["reasoning"])?.strOrNull()?.takeIf { it.isNotEmpty() }
+                    ?.let { add(Chunk.Reasoning(it)) }
+                node["content"]?.strOrNull()?.takeIf { it.isNotEmpty() }?.let { add(Chunk.Text(it)) }
+            }
+        }
     }
 }
 
@@ -200,8 +242,11 @@ class TextCompletionBackend(client: OkHttpClient) : HttpBackend(client) {
             req.apiKey?.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") } ?: emptyMap())
     }
 
-    override fun parseEvent(event: JsonObject, streaming: Boolean): String? =
-        event["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+    override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
+        override fun parse(event: JsonObject): List<Chunk> =
+            ((event["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("text")?.strOrNull()
+                ?.takeIf { it.isNotEmpty() }?.let { listOf(Chunk.Text(it)) } ?: emptyList()
+    }
 }
 
 class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
@@ -212,10 +257,16 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
             put("model", req.profile.model)
             if (system.isNotBlank()) put("system", system)
             put("messages", JsonArray(turns.map { buildJsonObject { put("role", it.first); put("content", it.second) } }))
-            put("max_tokens", s.maxResponseTokens)
-            put("temperature", s.temperature.coerceIn(0.0, 1.0))
-            if (s.topP < 1.0) put("top_p", s.topP)
-            if (s.topK > 0) put("top_k", s.topK)
+            val thinking = req.profile.reasoning.budgetTokens
+            put("max_tokens", if (thinking > 0) maxOf(s.maxResponseTokens, thinking + 1) else s.maxResponseTokens)
+            if (thinking > 0) {
+                // Extended thinking forbids temperature/top_p/top_k overrides.
+                put("thinking", buildJsonObject { put("type", "enabled"); put("budget_tokens", thinking) })
+            } else {
+                put("temperature", s.temperature.coerceIn(0.0, 1.0))
+                if (s.topP < 1.0) put("top_p", s.topP)
+                if (s.topK > 0) put("top_k", s.topK)
+            }
             if (req.stopSequences.isNotEmpty()) put("stop_sequences", JsonArray(req.stopSequences.map(::JsonPrimitive)))
             put("stream", s.stream)
         }
@@ -225,14 +276,29 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
         ))
     }
 
-    override fun parseEvent(event: JsonObject, streaming: Boolean): String? = if (streaming) {
-        if (event["type"]?.jsonPrimitive?.contentOrNull == "content_block_delta")
-            event["delta"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull else null
-    } else {
-        event["content"]?.jsonArray?.joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull ?: "" }
-    }
+    override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
+        override fun parse(event: JsonObject): List<Chunk> {
+            if (!streaming) {
+                return ((event["content"] as? JsonArray) ?: return emptyList()).mapNotNull { b ->
+                    val o = b as? JsonObject ?: return@mapNotNull null
+                    when (o["type"]?.strOrNull()) {
+                        "thinking" -> o["thinking"]?.strOrNull()?.let { Chunk.Reasoning(it) }
+                        "text" -> o["text"]?.strOrNull()?.let { Chunk.Text(it) }
+                        else -> null
+                    }
+                }
+            }
+            if (event["type"]?.strOrNull() != "content_block_delta") return emptyList()
+            val d = event["delta"] as? JsonObject ?: return emptyList()
+            return when (d["type"]?.strOrNull()) {
+                "thinking_delta" -> d["thinking"]?.strOrNull()?.let { listOf(Chunk.Reasoning(it)) }
+                "text_delta", null -> d["text"]?.strOrNull()?.let { listOf(Chunk.Text(it)) }
+                else -> null
+            } ?: emptyList()
+        }
 
-    override fun isDone(event: JsonObject) = event["type"]?.jsonPrimitive?.contentOrNull == "message_stop"
+        override fun isDone(event: JsonObject) = event["type"]?.strOrNull() == "message_stop"
+    }
 
     companion object {
         /**
@@ -255,3 +321,6 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
         }
     }
 }
+
+/** String content of a JSON primitive, or null for non-primitives / JSON null. */
+internal fun JsonElement.strOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content

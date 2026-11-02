@@ -129,4 +129,48 @@ class BackendTest {
     @Test fun noPresetKeepsProfileSamplers() {
         assertEquals(40, textBody(null)["top_k"]!!.jsonPrimitive.int)
     }
+
+    private fun chunks(type: BackendType, p: ConnectionProfile) =
+        runBlocking { (Backends.forType(type) as ChunkBackend).chunks(req(p)).toList() }
+
+    @Test fun openAiReasoningContentStreams() {
+        server.enqueue(sse("""{"choices":[{"delta":{"reasoning_content":"hm"}}]}""", """{"choices":[{"delta":{"content":"ok"}}]}""", "[DONE]"))
+        assertEquals(listOf(Chunk.Reasoning("hm"), Chunk.Text("ok")), chunks(BackendType.OPENAI, profile(BackendType.OPENAI)))
+        server.enqueue(sse("""{"choices":[{"delta":{"reasoning_content":"hm"}}]}""", """{"choices":[{"delta":{"content":"ok"}}]}""", "[DONE]"))
+        val text = runBlocking { Backends.forType(BackendType.OPENAI).generate(req(profile(BackendType.OPENAI))).toList() }
+        assertEquals(listOf("ok"), text)
+    }
+
+    @Test fun openAiReasoningFieldAlias() {
+        server.enqueue(MockResponse().setBody("""{"choices":[{"message":{"reasoning":"why","content":"ans"}}]}"""))
+        assertEquals(listOf(Chunk.Reasoning("why"), Chunk.Text("ans")), chunks(BackendType.OPENAI, profile(BackendType.OPENAI, false)))
+    }
+
+    @Test fun anthropicThinkingDelta() {
+        server.enqueue(sse(
+            """{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"t1"}}""",
+            """{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}""",
+            """{"type":"message_stop"}"""))
+        assertEquals(listOf(Chunk.Reasoning("t1"), Chunk.Text("hi")), chunks(BackendType.ANTHROPIC, profile(BackendType.ANTHROPIC)))
+    }
+
+    @Test fun anthropicThinkingRequestBody() {
+        server.enqueue(MockResponse().setBody("""{"content":[{"type":"thinking","thinking":"a"},{"type":"text","text":"b"}]}"""))
+        val p = profile(BackendType.ANTHROPIC, false).copy(reasoning = ReasoningSettings(budgetTokens = 2000))
+        assertEquals(listOf(Chunk.Reasoning("a"), Chunk.Text("b")), chunks(BackendType.ANTHROPIC, p))
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals(2000, body["thinking"]!!.jsonObject["budget_tokens"]!!.jsonPrimitive.int)
+        assertNull(body["temperature"])
+        assertTrue(body["max_tokens"]!!.jsonPrimitive.int > 2000)
+    }
+
+    @Test fun streamWithoutDoneCompletes() {
+        server.enqueue(sse("""{"choices":[{"delta":{"content":"a"}}]}"""))
+        assertEquals(listOf(Chunk.Text("a")), chunks(BackendType.OPENAI, profile(BackendType.OPENAI)))
+    }
+
+    @Test fun keepAliveEventsIgnored() {
+        server.enqueue(sse("""{"choices":[]}""", """{"usage":{"total_tokens":3}}""", """{"choices":[{"delta":{"content":"x"}}]}""", "[DONE]"))
+        assertEquals(listOf(Chunk.Text("x")), chunks(BackendType.OPENAI, profile(BackendType.OPENAI)))
+    }
 }
