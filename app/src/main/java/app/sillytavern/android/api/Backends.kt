@@ -115,6 +115,44 @@ private fun JsonObjectBuilder.putSamplers(req: GenerationRequest, maxKey: String
     if (req.stopSequences.isNotEmpty()) put("stop", JsonArray(req.stopSequences.map(::JsonPrimitive)))
 }
 
+private val presetDefaults = TextGenSamplerPreset()
+
+/** Applies an ST sampler preset: basics override the profile's; advanced fields are sent only when non-default. */
+private fun JsonObjectBuilder.putSamplerPreset(p: TextGenSamplerPreset) {
+    val d = presetDefaults
+    put("temperature", p.temp)
+    put("top_p", p.topP)
+    if (p.topK > 0) put("top_k", p.topK)
+    if (p.minP > 0) put("min_p", p.minP)
+    if (p.repPen != 1.0) put("repetition_penalty", p.repPen)
+    if (p.freqPen != 0.0) put("frequency_penalty", p.freqPen)
+    if (p.presencePen != 0.0) put("presence_penalty", p.presencePen)
+    if (p.topA != d.topA) put("top_a", p.topA)
+    if (p.tfs != d.tfs) put("tfs", p.tfs)
+    if (p.typicalP != d.typicalP) put("typical_p", p.typicalP)
+    if (p.repPenRange != d.repPenRange) put("repetition_penalty_range", p.repPenRange)
+    if (p.dryMultiplier != d.dryMultiplier) {
+        put("dry_multiplier", p.dryMultiplier)
+        put("dry_base", p.dryBase)
+        put("dry_allowed_length", p.dryAllowedLength)
+        put("dry_penalty_last_n", p.dryPenaltyLastN)
+        runCatching { Json.parseToJsonElement(p.drySequenceBreakers).jsonArray }.getOrNull()?.let { put("dry_sequence_breakers", it) }
+    }
+    if (p.mirostatMode > 0) { put("mirostat_mode", p.mirostatMode); put("mirostat_tau", p.mirostatTau); put("mirostat_eta", p.mirostatEta) }
+    if (p.smoothingFactor != d.smoothingFactor) { put("smoothing_factor", p.smoothingFactor); put("smoothing_curve", p.smoothingCurve) }
+    if (p.xtcProbability != d.xtcProbability) { put("xtc_probability", p.xtcProbability); put("xtc_threshold", p.xtcThreshold) }
+    if (p.nsigma != d.nsigma) put("nsigma", p.nsigma)
+    if (p.dynatemp) { put("dynatemp_low", p.minTemp); put("dynatemp_high", p.maxTemp); put("dynatemp_exponent", p.dynatempExponent) }
+    if (p.banEosToken) put("ban_eos_token", true)
+    if (!p.skipSpecialTokens) put("skip_special_tokens", false)
+    if (p.seed >= 0) put("seed", p.seed)
+    if (p.grammarString.isNotBlank()) put("grammar", p.grammarString)
+    if (p.negativePrompt.isNotBlank()) put("negative_prompt", p.negativePrompt)
+    if (p.guidanceScale != d.guidanceScale) put("guidance_scale", p.guidanceScale)
+    p.bannedTokens.lines().map { it.trim() }.filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+        ?.let { put("banned_strings", JsonArray(it.map(::JsonPrimitive))) }
+}
+
 class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
     override fun buildRequest(req: GenerationRequest): Request {
         val s = req.profile.sampler
@@ -150,10 +188,13 @@ class TextCompletionBackend(client: OkHttpClient) : HttpBackend(client) {
             if (req.profile.model.isNotBlank()) put("model", req.profile.model)
             put("prompt", req.textPrompt)
             putSamplers(req)
-            if (s.topK > 0) put("top_k", s.topK)
-            if (s.minP > 0) put("min_p", s.minP)
-            if (s.repetitionPenalty != 1.0) put("repetition_penalty", s.repetitionPenalty)
+            if (req.sampler == null) { // a preset replaces the profile's basic samplers
+                if (s.topK > 0) put("top_k", s.topK)
+                if (s.minP > 0) put("min_p", s.minP)
+                if (s.repetitionPenalty != 1.0) put("repetition_penalty", s.repetitionPenalty)
+            }
             put("stream", s.stream)
+            req.sampler?.let { putSamplerPreset(it) }
         }
         return post(url(req.profile.baseUrl, "/completions"), body,
             req.apiKey?.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") } ?: emptyMap())

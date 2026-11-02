@@ -3,6 +3,7 @@ package app.sillytavern.android.api
 import app.sillytavern.android.data.*
 import app.sillytavern.android.prompt.PromptMessage
 import app.sillytavern.android.prompt.Role
+import app.sillytavern.android.prompt.model.TextGenSamplerPreset
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -81,5 +82,51 @@ class BackendTest {
         assertEquals("user", turns.first().first)
         assertEquals(listOf("user", "assistant", "user"), turns.map { it.first })
         assertTrue(turns.last().second.contains("tail"))
+    }
+
+    private fun textBody(preset: TextGenSamplerPreset?, stops: List<String> = emptyList()): JsonObject {
+        server.enqueue(sse("""{"choices":[{"text":"x"}]}""", "[DONE]"))
+        val p = profile(BackendType.TEXT_COMPLETION)
+        runBlocking {
+            Backends.forType(BackendType.TEXT_COMPLETION).generate(
+                GenerationRequest(p, null, emptyList(), "prompt", stopSequences = stops, sampler = preset)
+            ).toList()
+        }
+        return Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+    }
+
+    @Test fun defaultPresetSendsOnlyBasicFields() {
+        val b = textBody(TextGenSamplerPreset())
+        assertFalse(b.containsKey("dry_multiplier")); assertFalse(b.containsKey("xtc_probability")); assertFalse(b.containsKey("seed"))
+        assertEquals(1.0, b["temperature"]!!.jsonPrimitive.double, 0.0)
+        assertFalse("preset overrides profile top_k", b.containsKey("top_k"))
+    }
+
+    @Test fun nonDefaultSamplersAreSent() {
+        val b = textBody(TextGenSamplerPreset(temp = 1.5, minP = 0.1, dryMultiplier = 0.8, xtcProbability = 0.5, mirostatMode = 2))
+        assertEquals(1.5, b["temperature"]!!.jsonPrimitive.double, 0.0)
+        assertEquals(0.1, b["min_p"]!!.jsonPrimitive.double, 0.0)
+        assertEquals(0.8, b["dry_multiplier"]!!.jsonPrimitive.double, 0.0)
+        assertEquals(0.5, b["xtc_probability"]!!.jsonPrimitive.double, 0.0)
+        assertEquals(2, b["mirostat_mode"]!!.jsonPrimitive.int)
+    }
+
+    @Test fun seedMinusOneOmittedAndPositiveSent() {
+        assertFalse(textBody(TextGenSamplerPreset(seed = -1)).containsKey("seed"))
+        assertEquals(42, textBody(TextGenSamplerPreset(seed = 42))["seed"]!!.jsonPrimitive.int)
+    }
+
+    @Test fun breakersParsedAsArray() {
+        val b = textBody(TextGenSamplerPreset(dryMultiplier = 0.8))
+        assertEquals(4, b["dry_sequence_breakers"]!!.jsonArray.size)
+    }
+
+    @Test fun stopStringsSent() {
+        val b = textBody(TextGenSamplerPreset(), listOf("<|im_end|>", "\nBob:"))
+        assertEquals(listOf("<|im_end|>", "\nBob:"), b["stop"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test fun noPresetKeepsProfileSamplers() {
+        assertEquals(40, textBody(null)["top_k"]!!.jsonPrimitive.int)
     }
 }
