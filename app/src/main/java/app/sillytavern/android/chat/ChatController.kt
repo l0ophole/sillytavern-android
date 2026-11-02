@@ -2,6 +2,7 @@ package app.sillytavern.android.chat
 
 import app.sillytavern.android.api.Backend
 import app.sillytavern.android.api.GenerationRequest
+import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
@@ -159,7 +160,7 @@ class ChatController(
         }
         val history = if (targetIndex != null && !appendTo) messages.take(targetIndex) else messages
         val prefix = if (appendTo && targetIndex != null) messages[targetIndex].text else ""
-        val textMode = profile.type == BackendType.TEXT_COMPLETION
+        val textMode = profile.type.usesTextPrompt
         val input = PromptInput(
             card = character.card, persona = s.activePersona, preset = s.activePreset,
             history = history, maxContextTokens = profile.sampler.maxContextTokens,

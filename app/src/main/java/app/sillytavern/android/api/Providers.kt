@@ -21,6 +21,11 @@ object Providers {
         Provider("openai", "OpenAI", BackendType.OPENAI, "https://api.openai.com/v1", reasoningStyle = ReasoningStyle.OPENAI_EFFORT),
         Provider("anthropic", "Claude (Anthropic)", BackendType.ANTHROPIC, "https://api.anthropic.com/v1"),
         Provider("google", "Google AI Studio (Gemini)", BackendType.GOOGLE, "https://generativelanguage.googleapis.com/v1beta"),
+        Provider("ollama", "Ollama", BackendType.OLLAMA, "http://127.0.0.1:11434", keyRequired = false),
+        Provider("koboldcpp", "KoboldCpp", BackendType.KOBOLD, "http://127.0.0.1:5001", keyRequired = false),
+        Provider("kobold", "KoboldAI Classic", BackendType.KOBOLD, "http://127.0.0.1:5000", keyRequired = false),
+        Provider("novelai", "NovelAI", BackendType.NOVELAI, "https://api.novelai.net"),
+        Provider("horde", "AI Horde", BackendType.HORDE, "https://aihorde.net/api", keyRequired = false),
         Provider(
             "openrouter", "OpenRouter", BackendType.OPENAI, "https://openrouter.ai/api/v1",
             reasoningStyle = ReasoningStyle.OPENROUTER,
@@ -57,6 +62,10 @@ object Providers {
             BackendType.ANTHROPIC -> byId("anthropic")
             BackendType.TEXT_COMPLETION -> byId("textgen")
             BackendType.GOOGLE -> byId("google")
+            BackendType.OLLAMA -> byId("ollama")
+            BackendType.KOBOLD -> byId("koboldcpp")
+            BackendType.NOVELAI -> byId("novelai")
+            BackendType.HORDE -> byId("horde")
         }
     }
 

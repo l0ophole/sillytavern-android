@@ -75,6 +75,10 @@ object Backends {
         BackendType.ANTHROPIC -> AnthropicBackend(client)
         BackendType.TEXT_COMPLETION -> TextCompletionBackend(client)
         BackendType.GOOGLE -> GeminiBackend(client)
+        BackendType.OLLAMA -> OllamaBackend(client)
+        BackendType.KOBOLD -> KoboldBackend(client)
+        BackendType.NOVELAI -> NovelAiBackend(client)
+        BackendType.HORDE -> HordeBackend(client)
     }
 }
 
