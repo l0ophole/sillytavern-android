@@ -46,6 +46,11 @@ private fun AppNav(c: AppContainer) {
         composable("edit/{file}", listOf(navArgument("file") { type = NavType.StringType; defaultValue = "" })) {
             CharacterEditScreen(c, it.arguments?.getString("file").orEmpty().ifEmpty { null }, onDone = { nav.popBackStack() })
         }
-        composable("settings") { SettingsScreen(c, onBack = { nav.popBackStack() }) }
+        composable("settings") {
+            SettingsScreen(c, onBack = { nav.popBackStack() },
+                onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") })
+        }
+        composable("promptmanager") { PromptManagerScreen(c, onBack = { nav.popBackStack() }) }
+        composable("presets") { PresetsScreen(c, onBack = { nav.popBackStack() }) }
     }
 }

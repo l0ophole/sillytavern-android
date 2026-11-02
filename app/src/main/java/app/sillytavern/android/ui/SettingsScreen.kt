@@ -12,11 +12,10 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
-    var editPreset by remember { mutableStateOf<PromptPreset?>(null) }
 
     Scaffold(topBar = { BackTopBar("Settings", onBack) }) { pad ->
         Column(Modifier.padding(pad).padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
@@ -38,12 +37,12 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
                     onDelete = if (s.personas.size > 1) ({ c.settings.update { it.copy(personas = it.personas - p) } }) else null)
             }
             Spacer(Modifier.height(16.dp))
-            SectionHeader("Prompt presets") { editPreset = PromptPreset(name = "") }
-            s.presets.forEach { p ->
-                ItemRow(p.name, p.mainPrompt.take(60), p.id == s.activePreset.id,
-                    onSelect = { c.settings.update { it.copy(activePresetId = p.id) } },
-                    onEdit = { editPreset = p },
-                    onDelete = if (s.presets.size > 1) ({ c.settings.update { it.copy(presets = it.presets - p) } }) else null)
+            Text("Prompts", style = MaterialTheme.typography.titleLarge)
+            Row {
+                TextButton(onClick = onPromptManager) { Text("Prompt Manager (${s.activePromptManager.name})") }
+            }
+            Row {
+                TextButton(onClick = onPresets) { Text("Instruct, context, system prompt & samplers") }
             }
             Spacer(Modifier.height(32.dp))
         }
@@ -63,29 +62,6 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { editPersona = null }) { Text("Cancel") } })
-    }
-    editPreset?.let { p ->
-        var name by remember { mutableStateOf(p.name) }
-        var main by remember { mutableStateOf(p.mainPrompt) }
-        var jb by remember { mutableStateOf(p.jailbreak) }
-        AlertDialog(
-            onDismissRequest = { editPreset = null }, title = { Text("Prompt preset") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Field("Name", name, { name = it })
-                    Field("Main prompt", main, { main = it }, singleLine = false, minLines = 3)
-                    Field("Post-history instructions", jb, { jb = it }, singleLine = false, minLines = 2)
-                    Text("Macros: {{char}}, {{user}}, {{description}}, {{time}}, {{random:a,b}}, {{roll:2d6}}", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = name.isNotBlank(), onClick = {
-                    val np = p.copy(name = name.trim(), mainPrompt = main, jailbreak = jb)
-                    c.settings.update { st -> st.copy(presets = if (st.presets.any { it.id == p.id }) st.presets.map { if (it.id == p.id) np else it } else st.presets + np) }
-                    editPreset = null
-                }) { Text("Save") }
-            },
-            dismissButton = { TextButton(onClick = { editPreset = null }) { Text("Cancel") } })
     }
 }
 
