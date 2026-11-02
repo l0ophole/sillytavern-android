@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.sillytavern.android.AppContainer
 import app.sillytavern.android.card.CharacterCard
+import app.sillytavern.android.worldinfo.WorldJson
+import kotlinx.serialization.json.*
 import coil.compose.AsyncImage
 import java.io.ByteArrayOutputStream
 
@@ -50,6 +52,9 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
     var post by remember { mutableStateOf(base.postHistoryInstructions) }
     var notes by remember { mutableStateOf(base.creatorNotes) }
     var tags by remember { mutableStateOf(base.tags.joinToString(", ")) }
+    val attachedWorld = ((base.raw["extensions"] as? JsonObject)?.get("world") as? JsonPrimitive)?.contentOrNull.orEmpty()
+    var world by remember { mutableStateOf(attachedWorld) }
+    var worldNames by remember { mutableStateOf(c.worlds.list()) }
     var avatar by remember { mutableStateOf<ByteArray?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -66,6 +71,7 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
                     creatorNotes = notes,
                     alternateGreetings = alts.split(Regex("\\n---\\n")).map { it.trim() }.filter { it.isNotEmpty() },
                     tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                    raw = withWorld(base.raw, world),
                 )
                 runCatching { c.characters.save(existing?.fileName, card, avatar) }
                     .onSuccess { onDone() }.onFailure { error = "Save failed: ${it.message}" }
@@ -91,7 +97,23 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
             Field("Post-history instructions", post, { post = it }, singleLine = false, minLines = 2)
             Field("Creator notes", notes, { notes = it }, singleLine = false, minLines = 2)
             Field("Tags (comma separated)", tags, { tags = it })
+            Pick("Lorebook", listOf("(none)") + worldNames, if (world.isBlank()) 0 else worldNames.indexOf(world) + 1) { world = if (it == 0) "" else worldNames[it - 1] }
+            (base.raw["character_book"] as? JsonObject)?.let { cb ->
+                OutlinedButton(onClick = {
+                    val n = (cb["name"] as? JsonPrimitive)?.contentOrNull?.ifBlank { null } ?: "${name.ifBlank { "Character" }} lore"
+                    c.worlds.save(WorldJson.fromCharacterBook(n, cb)); worldNames = c.worlds.list(); world = n
+                }) { Text("Import embedded lorebook as a world book") }
+            }
             Spacer(Modifier.height(24.dp))
         }
     }
 }
+
+private fun withWorld(raw: JsonObject, world: String): JsonObject {
+    val ext = JsonObject((raw["extensions"] as? JsonObject).orEmpty().toMutableMap().also {
+        if (world.isBlank()) it.remove("world") else it["world"] = JsonPrimitive(world)
+    })
+    return JsonObject(raw + ("extensions" to ext))
+}
+
+private fun JsonObject?.orEmpty() = this ?: JsonObject(emptyMap())

@@ -28,7 +28,7 @@ class WorldBookRepository(private val paths: StoragePaths) {
 
     /** Imports a world file, a bare `character_book`, or a character card carrying one. Returns the book name. */
     fun import(fileName: String, text: String): Result<String> = runCatching {
-        val root = try { Json.parseToJsonElement(text.trimStart('﻿')).jsonObject } catch (e: Exception) { error("Not a valid JSON object") }
+        val root = try { Json.parseToJsonElement(text.trimStart(0xFEFF.toChar())).jsonObject } catch (e: Exception) { error("Not a valid JSON object") }
         val base = fileName.substringAfterLast('/').removeSuffix(".json").ifBlank { "Imported" }
         val book: WorldBook = when {
             root["entries"] is JsonObject -> WorldJson.decode(base, text)

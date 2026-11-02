@@ -12,7 +12,7 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
@@ -43,6 +43,9 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             }
             Row {
                 TextButton(onClick = onPresets) { Text("Instruct, context, system prompt & samplers") }
+            }
+            Row {
+                TextButton(onClick = onWorlds) { Text("World Info (${s.globalWorldBooks.size} global)") }
             }
             Spacer(Modifier.height(32.dp))
         }

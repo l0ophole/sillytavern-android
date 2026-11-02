@@ -81,7 +81,7 @@ object WorldJson {
     }
 
     fun decode(name: String, text: String): WorldBook {
-        val root = json.parseToJsonElement(text.trimStart('﻿')).jsonObject
+        val root = json.parseToJsonElement(text.trimStart(0xFEFF.toChar())).jsonObject
         val entries = when (val e = root["entries"]) {
             is JsonObject -> e.entries.mapIndexedNotNull { i, (k, v) -> (v as? JsonObject)?.let { entry(it, k.toIntOrNull() ?: i) } }
             is JsonArray -> e.mapIndexedNotNull { i, v -> (v as? JsonObject)?.let { entry(it, i) } }

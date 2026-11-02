@@ -30,6 +30,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     var editing by remember { mutableStateOf<Int?>(null) }
     var actionsFor by remember { mutableStateOf<Int?>(null) }
     var showChats by remember { mutableStateOf(false) }
+    var showBook by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(characterFile) {
@@ -60,6 +61,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                             DropdownMenuItem({ Text("Regenerate") }, { menu = false; ctl.regenerate() })
                             DropdownMenuItem({ Text("Continue") }, { menu = false; ctl.continueLast() })
                             DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
+                            DropdownMenuItem({ Text("Chat lorebook…") }, { menu = false; showBook = true })
                             DropdownMenuItem({ Text("Edit character") }, { menu = false; onEdit(characterFile) })
                         }
                     }
@@ -112,6 +114,15 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         )
     }
     if (showChats) ChatListDialog(c, onDismiss = { showChats = false })
+    if (showBook) {
+        val names = remember { c.worlds.list() }
+        val current = ctl.chatBook()
+        AlertDialog(
+            onDismissRequest = { showBook = false }, title = { Text("Lorebook for this chat") },
+            text = { Pick("Book", listOf("(none)") + names, if (current == null) 0 else names.indexOf(current) + 1) { ctl.setChatBook(if (it == 0) null else names[it - 1]); showBook = false } },
+            confirmButton = { TextButton(onClick = { showBook = false }) { Text("Close") } },
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

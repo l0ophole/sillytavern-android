@@ -77,6 +77,15 @@ class ChatController(
         }
     }
 
+    /** Lorebook bound to the open chat (stored in the chat header, as SillyTavern does), or null. */
+    fun chatBook(): String? = WorldInfoRunner.chatBookOf(chat)
+
+    fun setChatBook(name: String?) {
+        val cur = chat ?: return
+        _state.update { it.copy(chat = WorldInfoRunner.withChatBook(cur, name)) }
+        persist()
+    }
+
     fun clearError() = _state.update { it.copy(error = null) }
     fun consumeImpersonation() = _state.update { it.copy(impersonation = null) }
 

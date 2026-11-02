@@ -48,9 +48,14 @@ private fun AppNav(c: AppContainer) {
         }
         composable("settings") {
             SettingsScreen(c, onBack = { nav.popBackStack() },
-                onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") })
+                onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") },
+                onWorlds = { nav.navigate("worlds") })
         }
         composable("promptmanager") { PromptManagerScreen(c, onBack = { nav.popBackStack() }) }
+        composable("worlds") { WorldInfoScreen(c, onOpenBook = { nav.navigate("worlds/${android.net.Uri.encode(it)}") }, onBack = { nav.popBackStack() }) }
+        composable("worlds/{name}", listOf(navArgument("name") { type = NavType.StringType })) {
+            WorldBookScreen(c, it.arguments!!.getString("name")!!, onBack = { nav.popBackStack() })
+        }
         composable("presets") { PresetsScreen(c, onBack = { nav.popBackStack() }) }
     }
 }
