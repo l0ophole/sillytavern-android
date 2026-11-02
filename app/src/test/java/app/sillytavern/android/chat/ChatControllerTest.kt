@@ -119,4 +119,46 @@ class ChatControllerTest {
         c.regenerate(); advanceUntilIdle()
         assertEquals(before, app.sillytavern.android.worldinfo.WorldInfoRunner.timedOf(c.state.value.chat).sticky)
     }
+
+    private val thinker = object : app.sillytavern.android.api.ChunkBackend {
+        override fun chunks(req: GenerationRequest): Flow<app.sillytavern.android.api.Chunk> = flow {
+            emit(app.sillytavern.android.api.Chunk.Reasoning("let me "))
+            emit(app.sillytavern.android.api.Chunk.Reasoning("think"))
+            emit(app.sillytavern.android.api.Chunk.Text("answer"))
+        }
+    }
+
+    @Test fun reasoningStoredInExtraNotText() = runTest {
+        val c = controller(backend = thinker); c.open(ch); c.send("hi"); advanceUntilIdle()
+        val last = c.state.value.chat!!.messages.last()
+        assertEquals("answer", last.text)
+        assertEquals("let me think", last.reasoning)
+        assertEquals("let me think", ChatRepository(paths).load(c.state.value.chat!!.file!!).messages.last().reasoning)
+    }
+
+    @Test fun regenerateReplacesReasoning() = runTest {
+        var first = true
+        val be = object : app.sillytavern.android.api.ChunkBackend {
+            override fun chunks(req: GenerationRequest): Flow<app.sillytavern.android.api.Chunk> = flow {
+                if (first) { first = false; emit(app.sillytavern.android.api.Chunk.Reasoning("old")) }
+                emit(app.sillytavern.android.api.Chunk.Text("t"))
+            }
+        }
+        val c = controller(backend = be); c.open(ch); c.send("hi"); advanceUntilIdle()
+        assertEquals("old", c.state.value.chat!!.messages.last().reasoning)
+        c.regenerate(); advanceUntilIdle()
+        assertNull(c.state.value.chat!!.messages.last().reasoning)
+    }
+
+    @Test fun plainBackendStillWorksWithoutReasoning() = runTest {
+        val c = controller(); c.open(ch); c.send("hi"); advanceUntilIdle()
+        assertNull(c.state.value.chat!!.messages.last().reasoning)
+    }
+
+    @Test fun koboldUsesTextPrompt() = runTest {
+        val s = AppSettings(connections = listOf(ConnectionProfile(name = "k", type = BackendType.KOBOLD)))
+        val c = controller(s); c.open(ch); c.send("hi"); advanceUntilIdle()
+        assertTrue(lastReq!!.textPrompt.contains("hi"))
+        assertTrue(lastReq!!.messages.isEmpty())
+    }
 }

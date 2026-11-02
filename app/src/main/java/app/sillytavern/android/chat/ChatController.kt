@@ -1,6 +1,11 @@
 package app.sillytavern.android.chat
 
 import app.sillytavern.android.api.Backend
+import app.sillytavern.android.api.Chunk
+import app.sillytavern.android.api.ChunkBackend
+import app.sillytavern.android.api.EmptyToolRegistry
+import app.sillytavern.android.api.ToolLoop
+import app.sillytavern.android.api.ToolRegistry
 import app.sillytavern.android.api.GenerationRequest
 import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
@@ -33,6 +38,7 @@ class ChatController(
     private val scope: CoroutineScope,
     private val counterFor: (BackendType) -> TokenCounter = { ApproxTokenCounter },
     private val worlds: WorldBookRepository? = null,
+    private val toolRegistry: ToolRegistry = EmptyToolRegistry,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -189,12 +195,27 @@ class ChatController(
         _state.update { it.copy(generating = true, error = null) }
         job = scope.launch {
             val acc = StringBuilder(prefix)
+            val thinking = StringBuilder(if (appendTo && targetIndex != null) messages[targetIndex].reasoning.orEmpty() else "")
             var failure: String? = null
+            // A fresh reply starts without the previous reply's reasoning (continue keeps it).
+            if (targetIndex != null && !appendTo) setTargetReasoning(targetIndex, null)
             try {
-                backendFor(profile.type).generate(req).collect { delta ->
-                    acc.append(delta)
-                    if (targetIndex != null) setTargetText(targetIndex, acc.toString())
-                    else _state.update { it.copy(impersonation = acc.toString().trimStart()) }
+                val backend = backendFor(profile.type)
+                val stream: Flow<Chunk> = if (backend is ChunkBackend) ToolLoop.run(backend, req, toolRegistry)
+                else backend.generate(req).map { Chunk.Text(it) }
+                stream.collect { chunk ->
+                    when (chunk) {
+                        is Chunk.Text -> {
+                            acc.append(chunk.text)
+                            if (targetIndex != null) setTargetText(targetIndex, acc.toString())
+                            else _state.update { it.copy(impersonation = acc.toString().trimStart()) }
+                        }
+                        is Chunk.Reasoning -> {
+                            thinking.append(chunk.text)
+                            if (targetIndex != null) setTargetReasoning(targetIndex, thinking.toString())
+                        }
+                        is Chunk.ToolCall -> {} // ToolLoop consumes tool calls; without a registry they are ignored
+                    }
                 }
             } catch (e: CancellationException) {
                 // keep partial output
@@ -217,6 +238,12 @@ class ChatController(
         val c = st.chat ?: return@update st
         if (index !in c.messages.indices) return@update st
         st.copy(chat = c.copy(messages = c.messages.toMutableList().also { it[index] = it[index].withText(text) }))
+    }
+
+    private fun setTargetReasoning(index: Int, text: String?) = _state.update { st ->
+        val c = st.chat ?: return@update st
+        if (index !in c.messages.indices) return@update st
+        st.copy(chat = c.copy(messages = c.messages.toMutableList().also { it[index] = it[index].withReasoning(text) }))
     }
 
     /** Remove an empty placeholder message (or an empty extra swipe) left by a failed/cancelled generation. */

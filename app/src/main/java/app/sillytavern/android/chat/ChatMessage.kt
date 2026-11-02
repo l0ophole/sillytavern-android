@@ -20,6 +20,14 @@ data class ChatMessage(
     fun withText(t: String): ChatMessage =
         copy(swipes = swipes.toMutableList().also { if (it.isEmpty()) it += t else it[swipeId.coerceIn(it.indices)] = t })
 
+    /** Model reasoning/thinking for the current reply (SillyTavern keeps it in `extra.reasoning`). */
+    val reasoning: String? get() = extra["reasoning"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    fun withReasoning(r: String?): ChatMessage = copy(extra = buildJsonObject {
+        extra.forEach { (k, v) -> if (k != "reasoning") put(k, v) }
+        if (!r.isNullOrBlank()) put("reasoning", r)
+    })
+
     fun addSwipe(t: String) = copy(swipes = swipes + t, swipeId = swipes.size)
     fun selectSwipe(i: Int) = copy(swipeId = i.coerceIn(0, (swipes.size - 1).coerceAtLeast(0)))
 

@@ -1,7 +1,13 @@
 package app.sillytavern.android.ui
 
+import app.sillytavern.android.api.BackendException
+import app.sillytavern.android.api.ModelInfo
+import app.sillytavern.android.api.ModelLister
+import app.sillytavern.android.api.Provider
 import app.sillytavern.android.api.Providers
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -92,7 +98,14 @@ private fun ItemRow(title: String, subtitle: String, selected: Boolean, onSelect
 @Composable
 private fun ConnectionDialog(c: AppContainer, p: ConnectionProfile, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(p.name) }
-    var type by remember { mutableStateOf(p.type) }
+    var provider by remember { mutableStateOf(Providers.forProfile(p)) }
+    var effort by remember { mutableStateOf(p.reasoning.effort) }
+    var budget by remember { mutableStateOf(if (p.reasoning.budgetTokens > 0) p.reasoning.budgetTokens.toString() else "") }
+    var providerMenu by remember { mutableStateOf(false) }
+    var models by remember { mutableStateOf<List<ModelInfo>?>(null) }
+    var modelError by remember { mutableStateOf<String?>(null) }
+    var loadingModels by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf(p.baseUrl) }
     var model by remember { mutableStateOf(p.model) }
     var key by remember { mutableStateOf(c.secrets.get("key:${p.id}") ?: "") }
@@ -106,27 +119,55 @@ private fun ConnectionDialog(c: AppContainer, p: ConnectionProfile, onDismiss: (
     var maxTok by remember { mutableStateOf(sm.maxResponseTokens.toString()) }
     var stream by remember { mutableStateOf(sm.stream) }
 
-    fun defaultUrl(t: BackendType) = Providers.ofType(t).first().baseUrl
-
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Connection") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Field("Name", name, { name = it })
-                Text("API type", style = MaterialTheme.typography.labelMedium)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    BackendType.entries.forEachIndexed { i, t ->
-                        SegmentedButton(type == t, {
-                            if (url == defaultUrl(type)) url = defaultUrl(t)
-                            type = t
-                        }, SegmentedButtonDefaults.itemShape(i, BackendType.entries.size)) {
-                            Text(Providers.ofType(t).first().label.substringBefore(" ("), maxLines = 1)
+                Text("Provider", style = MaterialTheme.typography.labelMedium)
+                Box {
+                    OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) { Text(provider.label) }
+                    DropdownMenu(providerMenu, { providerMenu = false }) {
+                        Providers.all.forEach { pr ->
+                            DropdownMenuItem(text = { Text(pr.label) }, onClick = {
+                                providerMenu = false
+                                if (pr.id != provider.id) {
+                                    if (url.isBlank() || url == provider.baseUrl) url = pr.baseUrl
+                                    model = ""; models = null
+                                    provider = pr
+                                }
+                            })
                         }
                     }
                 }
                 Field("Base URL (without /chat/completions)", url, { url = it })
                 Field("Model", model, { model = it })
-                Field("API key", key, { key = it }, secret = true)
+                OutlinedButton(
+                    enabled = !loadingModels && url.isNotBlank(),
+                    onClick = {
+                        loadingModels = true; modelError = null
+                        val probe = p.copy(type = provider.type, provider = provider.id, baseUrl = url.trim(), model = model.trim())
+                        scope.launch {
+                            try { models = ModelLister.fetch(probe, key.trim()); if (models!!.isEmpty()) modelError = "No models returned" }
+                            catch (e: BackendException) { modelError = e.message }
+                            catch (e: Exception) { modelError = e.message ?: e.javaClass.simpleName }
+                            loadingModels = false
+                        }
+                    },
+                ) { Text(if (loadingModels) "Loading…" else "Fetch models") }
+                modelError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                Field(if (provider.keyRequired) "API key" else "API key (optional)", key, { key = it }, secret = true)
+                if (provider.type == BackendType.HORDE) Text("Leave the key empty for anonymous access (slow queue).", style = MaterialTheme.typography.bodySmall)
+                if (provider.type == BackendType.NOVELAI) Text("NovelAI uses the text prompt with your instruct/context templates.", style = MaterialTheme.typography.bodySmall)
+                if (provider.type != BackendType.TEXT_COMPLETION && provider.type != BackendType.KOBOLD && provider.type != BackendType.NOVELAI && provider.type != BackendType.HORDE) {
+                    Text("Reasoning effort", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("auto", "min", "low", "medium", "high", "max").forEach { e ->
+                            FilterChip(effort == e, { effort = e }, label = { Text(e) })
+                        }
+                    }
+                    Field("Thinking budget tokens (0 = off)", budget, { budget = it.filter(Char::isDigit) }, number = true)
+                }
                 Field("Temperature", temp, { temp = it }, number = true)
                 Field("Top P", topP, { topP = it }, number = true)
                 Field("Top K (0 = off)", topK, { topK = it }, number = true)
@@ -140,7 +181,8 @@ private fun ConnectionDialog(c: AppContainer, p: ConnectionProfile, onDismiss: (
         confirmButton = {
             TextButton(enabled = name.isNotBlank() && url.isNotBlank(), onClick = {
                 val np = p.copy(
-                    name = name.trim(), type = type, baseUrl = url.trim(), model = model.trim(),
+                    name = name.trim(), type = provider.type, provider = provider.id, baseUrl = url.trim(), model = model.trim(),
+                    reasoning = ReasoningSettings(effort, budget.toIntOrNull() ?: 0),
                     sampler = sm.copy(
                         temperature = temp.toDoubleOrNull() ?: sm.temperature, topP = topP.toDoubleOrNull() ?: sm.topP,
                         topK = topK.toIntOrNull() ?: sm.topK, minP = minP.toDoubleOrNull() ?: sm.minP,

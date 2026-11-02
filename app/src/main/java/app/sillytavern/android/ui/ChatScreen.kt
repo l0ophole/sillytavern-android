@@ -134,6 +134,13 @@ private fun MessageBubble(m: ChatMessage, isLast: Boolean, generating: Boolean, 
             .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(12.dp),
     ) {
         Text(m.name, style = MaterialTheme.typography.labelMedium)
+        m.reasoning?.let { r ->
+            var open by remember(m.sendDate) { mutableStateOf(false) }
+            TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {
+                Text(if (open) "▾ Thinking" else "▸ Thinking…", style = MaterialTheme.typography.labelMedium)
+            }
+            if (open) Text(r, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+        }
         Text(if (m.text.isEmpty() && generating) "…" else m.text, style = MaterialTheme.typography.bodyLarge)
         if (isLast && !m.isUser && (m.swipes.size > 1 || !generating)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
