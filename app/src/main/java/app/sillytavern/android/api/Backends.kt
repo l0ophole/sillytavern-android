@@ -3,6 +3,7 @@ package app.sillytavern.android.api
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.data.ConnectionProfile
 import app.sillytavern.android.prompt.PromptMessage
+import app.sillytavern.android.prompt.model.TextGenSamplerPreset
 import app.sillytavern.android.prompt.Role
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,8 @@ data class GenerationRequest(
     val messages: List<PromptMessage>,
     val textPrompt: String,
     val stopSequences: List<String> = profile.sampler.stopSequences,
+    /** Text-completion sampler preset; Task 6 maps its fields into the request. */
+    val sampler: TextGenSamplerPreset? = null,
 )
 
 /** Streams generated text as incremental deltas (a single delta when streaming is off). */
@@ -196,8 +199,9 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
          * with user. The leading system message becomes `system`; later system messages are sent as user turns.
          */
         fun toAnthropicMessages(messages: List<PromptMessage>): Pair<String, List<Pair<String, String>>> {
-            val system = messages.firstOrNull()?.takeIf { it.role == Role.SYSTEM }?.content ?: ""
-            val rest = if (system.isNotEmpty() || messages.firstOrNull()?.role == Role.SYSTEM) messages.drop(1) else messages
+            val leading = messages.takeWhile { it.role == Role.SYSTEM }
+            val system = leading.joinToString("\n\n") { it.content }
+            val rest = messages.drop(leading.size)
             val turns = mutableListOf<Pair<String, String>>()
             for (m in rest) {
                 val role = if (m.role == Role.ASSISTANT) "assistant" else "user"

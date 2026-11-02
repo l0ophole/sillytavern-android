@@ -148,17 +148,24 @@ class ChatController(
         }
         val history = if (targetIndex != null && !appendTo) messages.take(targetIndex) else messages
         val prefix = if (appendTo && targetIndex != null) messages[targetIndex].text else ""
+        val textMode = profile.type == BackendType.TEXT_COMPLETION
         val input = PromptInput(
             card = character.card, persona = s.activePersona, preset = s.activePreset,
             history = history, maxContextTokens = profile.sampler.maxContextTokens,
             maxResponseTokens = profile.sampler.maxResponseTokens,
             counter = counterFor(profile.type), mode = mode,
+            promptManager = s.activePromptManager,
+            // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
+            systemPrompt = if (textMode) s.activeSystemPrompt else null,
         )
-        val prompt = PromptBuilder.build(input)
-        val req = GenerationRequest(
-            profile, apiKey(profile.id), prompt,
-            PromptBuilder.toTextPrompt(prompt, s.activePersona.name, character.card.name, mode),
-        )
+        val req = if (textMode) {
+            val formatted = PromptBuilder.buildText(input, s.activeInstruct, s.activeContext)
+            GenerationRequest(
+                profile, apiKey(profile.id), emptyList(), formatted.text,
+                stopSequences = (profile.sampler.stopSequences + formatted.stopStrings).distinct(),
+                sampler = s.activeSamplerPreset,
+            )
+        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(input), "")
         _state.update { it.copy(generating = true, error = null) }
         job = scope.launch {
             val acc = StringBuilder(prefix)

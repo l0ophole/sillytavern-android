@@ -1,5 +1,6 @@
 package app.sillytavern.android.data
 
+import app.sillytavern.android.prompt.model.*
 import java.io.File
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -61,10 +62,32 @@ data class AppSettings(
     val activePersonaId: String? = null,
     val presets: List<PromptPreset> = listOf(PromptPreset()),
     val activePresetId: String? = null,
+    // --- Prompt engine (feature set 2); presets are identified by name, as in SillyTavern ---
+    val promptManagerPresets: List<PromptManagerPreset> = listOf(DefaultPresets.promptManager()),
+    val activePromptManagerName: String? = null,
+    val instructEnabled: Boolean = false,
+    val instructTemplates: List<InstructTemplate> = DefaultPresets.instructTemplates(),
+    val activeInstructName: String? = null,
+    val contextTemplates: List<ContextTemplate> = DefaultPresets.contextTemplates(),
+    val activeContextName: String? = null,
+    val systemPrompts: List<SystemPromptPreset> = DefaultPresets.systemPrompts(),
+    val activeSystemPromptName: String? = null,
+    val samplerPresets: List<TextGenSamplerPreset> = DefaultPresets.samplerPresets(),
+    val activeSamplerPresetName: String? = null,
 ) {
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()
     val activePersona get() = personas.firstOrNull { it.id == activePersonaId } ?: personas.first()
-    val activePreset get() = presets.firstOrNull { it.id == activePresetId } ?: presets.first()
+    val activePreset get() = presets.firstOrNull { it.id == activePresetId } ?: presets.firstOrNull() ?: PromptPreset()
+    val activePromptManager get() = promptManagerPresets.firstOrNull { it.name == activePromptManagerName }
+        ?: promptManagerPresets.firstOrNull() ?: DefaultPresets.promptManager()
+    /** Null when instruct mode is off. */
+    val activeInstruct get() = if (!instructEnabled) null
+        else instructTemplates.firstOrNull { it.name == activeInstructName } ?: instructTemplates.firstOrNull()
+    val activeContext get() = contextTemplates.firstOrNull { it.name == activeContextName }
+        ?: contextTemplates.firstOrNull() ?: ContextTemplate()
+    val activeSystemPrompt get() = systemPrompts.firstOrNull { it.name == activeSystemPromptName } ?: systemPrompts.firstOrNull()
+    val activeSamplerPreset get() = samplerPresets.firstOrNull { it.name == activeSamplerPresetName }
+        ?: samplerPresets.firstOrNull() ?: TextGenSamplerPreset()
 }
 
 /** JSON-file backed settings with an observable StateFlow. */
@@ -80,9 +103,20 @@ class SettingsRepository(private val file: File) {
         state.value = next
     }
 
-    private fun load(): AppSettings =
-        if (file.exists()) {
-            runCatching { json.decodeFromString(AppSettings.serializer(), file.readText()) }
-                .getOrDefault(AppSettings())
-        } else AppSettings()
+    private fun load(): AppSettings {
+        if (!file.exists()) return AppSettings()
+        val text = file.readText()
+        val loaded = runCatching { json.decodeFromString(AppSettings.serializer(), text) }.getOrDefault(AppSettings())
+        // Settings written before the prompt engine only had MVP presets: carry their text over.
+        val legacyOnly = runCatching {
+            val o = json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
+            o.containsKey("presets") && !o.containsKey("promptManagerPresets")
+        }.getOrDefault(false)
+        if (!legacyOnly || loaded.presets.isEmpty()) return loaded
+        val migrated = loaded.presets.map(DefaultPresets::fromLegacy)
+        return loaded.copy(
+            promptManagerPresets = migrated,
+            activePromptManagerName = loaded.presets.firstOrNull { it.id == loaded.activePresetId }?.name,
+        )
+    }
 }

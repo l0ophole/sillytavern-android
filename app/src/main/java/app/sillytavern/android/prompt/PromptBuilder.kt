@@ -7,6 +7,8 @@ import app.sillytavern.android.chat.Macros
 import app.sillytavern.android.data.Persona
 import app.sillytavern.android.data.DefaultPresets
 import app.sillytavern.android.data.PromptPreset
+import app.sillytavern.android.prompt.model.ContextTemplate
+import app.sillytavern.android.prompt.model.InstructTemplate
 import app.sillytavern.android.prompt.model.PromptManagerPreset
 import app.sillytavern.android.prompt.model.SystemPromptPreset
 
@@ -28,64 +30,45 @@ data class PromptInput(
     val systemPrompt: SystemPromptPreset? = null,
 )
 
-/** Builds the provider-neutral prompt: system block, trimmed history, post-history instructions. */
+/** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
 object PromptBuilder {
-    fun build(i: PromptInput): List<PromptMessage> {
-        val ctx = MacroContext(
-            user = i.persona.name, char = i.card.name,
-            description = i.card.description, personality = i.card.personality,
-            scenario = i.card.scenario, persona = i.persona.description,
-        )
+    fun build(i: PromptInput): List<PromptMessage> = PromptManagerBuilder.build(i)
+
+    /** Text-completion prompt (instruct template optional) plus the stop strings it implies. */
+    fun buildText(i: PromptInput, instruct: InstructTemplate?, context: ContextTemplate): FormattedPrompt {
+        val pm = i.promptManager
+        val ctx = PromptSupport.macroContext(i)
         fun x(s: String) = Macros.expand(s, ctx).trim()
+        fun mainContent() = pm.prompts.firstOrNull { it.identifier == "main" }?.content.orEmpty()
+        fun jailbreakContent() = pm.prompts.firstOrNull { it.identifier == "jailbreak" }?.content.orEmpty()
 
-        val system = buildList {
-            add(x(i.card.systemPrompt.ifBlank { i.preset.mainPrompt }))
-            if (i.card.description.isNotBlank()) add(x(i.card.description))
-            if (i.card.personality.isNotBlank()) add("${i.card.name}'s personality: ${x(i.card.personality)}")
-            if (i.card.scenario.isNotBlank()) add("Scenario: ${x(i.card.scenario)}")
-            if (i.persona.description.isNotBlank()) add("${i.persona.name}'s description: ${x(i.persona.description)}")
-            if (i.card.messageExample.isNotBlank()) add("[Example Chat]\n${x(i.card.messageExample)}")
-        }.filter { it.isNotBlank() }.joinToString("\n\n")
-
-        val tail = buildList {
-            if (i.preset.jailbreak.isNotBlank()) add(x(i.preset.jailbreak))
-            if (i.card.postHistoryInstructions.isNotBlank()) add(x(i.card.postHistoryInstructions))
+        val vars = mapOf(
+            "system" to x(i.card.systemPrompt.ifBlank { i.systemPrompt?.content?.ifBlank { mainContent() } ?: mainContent() }),
+            "description" to x(i.card.description),
+            "personality" to if (i.card.personality.isBlank()) "" else x(pm.personalityFormat),
+            "scenario" to if (i.card.scenario.isBlank()) "" else x(pm.scenarioFormat),
+            "persona" to x(i.persona.description),
+            "wiBefore" to "", "wiAfter" to "", "anchorBefore" to "", "anchorAfter" to "",
+        )
+        val examples = i.card.messageExample.takeIf { it.isNotBlank() }
+            ?.let { listOf("${x(pm.newExampleChatPrompt)}\n${x(it)}") }.orEmpty()
+        val post = listOf(
+            i.card.postHistoryInstructions.ifBlank { i.systemPrompt?.postHistory?.ifBlank { jailbreakContent() } ?: jailbreakContent() },
             when (i.mode) {
-                GenerationMode.IMPERSONATE -> add("[Write the next reply from ${i.persona.name}'s point of view, using the chat history so far as a guideline for the writing style of ${i.persona.name}.]")
-                GenerationMode.CONTINUE -> add("[Continue your last message without repeating its original content.]")
-                GenerationMode.NORMAL -> {}
-            }
-        }.filter { it.isNotBlank() }.joinToString("\n\n")
+                GenerationMode.IMPERSONATE -> pm.impersonationPrompt
+                else -> ""
+            },
+        ).map(::x).filter { it.isNotBlank() }.joinToString("\n\n")
 
-        var budget = i.maxContextTokens - i.maxResponseTokens - i.counter.count(system) - i.counter.count(tail)
-        val msgs = i.history.filterNot { it.isSystem }.map { m ->
+        val fixedTokens = i.counter.count(vars.values.joinToString("\n") + examples.joinToString("\n") + post) + 64
+        val all = i.history.filterNot { it.isSystem }.map { m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
             PromptMessage(if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
         }
-        // Keep the newest messages that fit; always keep the very last one.
-        val kept = ArrayDeque<PromptMessage>()
-        for (m in msgs.asReversed()) {
-            val cost = i.counter.count(m.content) + 4
-            if (kept.isNotEmpty() && cost > budget) break
-            budget -= cost
-            kept.addFirst(m)
-        }
-        return buildList {
-            if (system.isNotBlank()) add(PromptMessage(Role.SYSTEM, system))
-            addAll(kept)
-            if (tail.isNotBlank()) add(PromptMessage(Role.SYSTEM, tail))
-        }
-    }
-
-    /** Plain-text prompt for text-completion backends (no instruct template yet): "Name: text" lines. */
-    fun toTextPrompt(messages: List<PromptMessage>, userName: String, charName: String, mode: GenerationMode): String {
-        val sb = StringBuilder()
-        for (m in messages) when (m.role) {
-            Role.SYSTEM -> sb.append(m.content).append("\n\n")
-            Role.USER -> sb.append(if (mode == GenerationMode.IMPERSONATE) charName else userName).append(": ").append(m.content).append('\n')
-            Role.ASSISTANT -> sb.append(if (mode == GenerationMode.IMPERSONATE) userName else charName).append(": ").append(m.content).append('\n')
-        }
-        if (mode != GenerationMode.CONTINUE) sb.append(if (mode == GenerationMode.IMPERSONATE) userName else charName).append(':')
-        return sb.toString()
+        val kept = PromptSupport.trimHistory(all, i.maxContextTokens - i.maxResponseTokens - fixedTokens, i.counter)
+        return InstructFormatter.format(
+            TextPromptParts(vars, examples, kept, post), instruct, context,
+            i.persona.name, i.card.name, i.mode,
+        )
     }
 }

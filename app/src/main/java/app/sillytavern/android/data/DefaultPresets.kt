@@ -31,4 +31,40 @@ object DefaultPresets {
             "worldInfoAfter" to true, "dialogueExamples" to true, "chatHistory" to true, "jailbreak" to true,
         ).map { PromptOrderEntry(it.first, it.second) },
     )
+
+    private fun resource(name: String): String =
+        DefaultPresets::class.java.getResourceAsStream("/presets/$name.json")!!.bufferedReader().use { it.readText() }
+
+    private fun <T> bundle(prefix: String, names: List<String>, decode: (String) -> T): List<T> =
+        names.map { decode(resource("$prefix-$it")) }
+
+    fun instructTemplates() = bundle("instruct", listOf("ChatML", "Alpaca", "Llama3", "MistralV7")) {
+        PresetJson.decode(InstructTemplate.serializer(), it)
+    }
+
+    fun contextTemplates() = bundle("context", listOf("Default", "ChatML", "Alpaca", "Llama3", "MistralV7")) {
+        PresetJson.decode(ContextTemplate.serializer(), it)
+    }
+
+    fun systemPrompts() = bundle("sysprompt", listOf("RoleplaySimple", "RoleplayDetailed", "NeutralChat", "Blank")) {
+        PresetJson.decode(SystemPromptPreset.serializer(), it)
+    }
+
+    /** Sampler preset files carry no name; ST names them after the file. */
+    fun samplerPresets() = listOf("Default", "Deterministic", "Neutral", "Universal-Creative", "Universal-Light").map {
+        PresetJson.decode(TextGenSamplerPreset.serializer(), resource("textgen-$it")).copy(name = it)
+    }
+
+    /** MVP [PromptPreset] -> Prompt Manager preset, keeping the user's custom text. */
+    fun fromLegacy(p: PromptPreset): PromptManagerPreset {
+        val base = promptManager(p.name)
+        return base.copy(prompts = base.prompts.map {
+            when (it.identifier) {
+                "main" -> it.copy(content = p.mainPrompt)
+                "nsfw" -> it.copy(content = p.nsfwPrompt)
+                "jailbreak" -> it.copy(content = p.jailbreak)
+                else -> it
+            }
+        })
+    }
 }

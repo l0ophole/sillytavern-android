@@ -15,8 +15,8 @@ class PromptTest {
     @Test fun systemExpandsMacrosAndRolesMap() {
         val p = PromptBuilder.build(input(listOf(ChatMessage.assistant("Ann", "Hi"), ChatMessage.user("Bob", "Hello"))))
         assertEquals(Role.SYSTEM, p.first().role)
-        assertTrue(p.first().content.contains("Ann is kind to Bob."))
-        assertEquals(listOf(Role.ASSISTANT, Role.USER), p.drop(1).map { it.role })
+        assertTrue(p.any { it.role == Role.SYSTEM && it.content.contains("Ann is kind to Bob.") })
+        assertEquals(listOf(Role.ASSISTANT, Role.USER), p.filter { it.role != Role.SYSTEM }.map { it.role })
     }
 
     @Test fun trimsOldestKeepsNewest() {
@@ -34,13 +34,12 @@ class PromptTest {
 
     @Test fun impersonateFlipsRolesAndAddsInstruction() {
         val p = PromptBuilder.build(input(listOf(ChatMessage.user("Bob", "q"), ChatMessage.assistant("Ann", "a")), mode = GenerationMode.IMPERSONATE))
-        assertEquals(Role.ASSISTANT, p[1].role)
-        assertTrue(p.last().content.contains("Bob's point of view"))
+        assertEquals(Role.ASSISTANT, p.first { it.role != Role.SYSTEM }.role)
+        assertTrue(p.last().content.contains("point of view of Bob"))
     }
 
     @Test fun textPromptEndsWithCharPrefix() {
-        val p = PromptBuilder.build(input(listOf(ChatMessage.user("Bob", "Hello"))))
-        val t = PromptBuilder.toTextPrompt(p, "Bob", "Ann", GenerationMode.NORMAL)
+        val t = PromptBuilder.buildText(input(listOf(ChatMessage.user("Bob", "Hello"))), null, app.sillytavern.android.prompt.model.ContextTemplate()).text
         assertTrue(t.contains("Bob: Hello")); assertTrue(t.endsWith("Ann:"))
     }
 

@@ -78,4 +78,16 @@ class ChatControllerTest {
         assertEquals("abc", c.state.value.chat!!.messages.last().text)
         assertFalse(c.state.value.generating)
     }
+
+    @Test fun controllerUsesInstructForTextCompletion() = runTest {
+        val st = AppSettings(
+            connections = listOf(ConnectionProfile(name = "t", type = BackendType.TEXT_COMPLETION)),
+            instructEnabled = true, activeInstructName = "ChatML", activeContextName = "ChatML",
+        )
+        val c = controller(st); c.open(ch); c.send("hi"); advanceUntilIdle()
+        val req = lastReq!!
+        assertTrue(req.textPrompt.startsWith("<|im_start|>system"))
+        assertTrue(req.stopSequences.contains("<|im_end|>"))
+        assertTrue(req.textPrompt.endsWith("<|im_start|>assistant\nAnn:"))
+    }
 }
