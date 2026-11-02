@@ -38,6 +38,27 @@
 - Same as MVP: UI never run on a device/emulator; bundled presets are loaded via classpath resources (`src/main/resources/presets`), untested on-device
 - No real backend calls; instruct output is checked against hand-written expectations, not against SillyTavern's actual output for the same card/chat
 
+## Done (feature set 3: World Info) — plan: docs/plans/02-world-info.md
+- Models/JSON: ST world-file format (entries as object or array, bool/number quirks, unknown keys preserved), V2 `character_book` <-> world book conversion
+- Scanner (port of `checkWorldInfo`): plain/regex/whole-word/case keys, scan depth (global + per entry), secondary-key logic (AND ANY / NOT ALL / NOT ANY / AND ALL), constants, `@@activate`/`@@dont_activate`, recursion (prevent/exclude/delay-until-recursion levels, max steps), min activations, inclusion groups (override, weights, scoring), probability, token budget (% + cap, ignore-budget), generation-type triggers, opt-in scanning of persona/card fields, per-entry character filter
+- Timed effects: sticky / cooldown / delay, stored in the chat header (`chat_metadata.timedWorldInfo`); regenerate/continue/impersonate do not advance them
+- Assembly: before/after (with `wi_format`), at-depth injections by role, example-message top/bottom, `{{outlet::name}}`; text completion gets `wiBefore`/`wiAfter` and depth injections
+- Sources: global books, character-attached book (`extensions.world`), per-character extra books, chat-bound book, embedded `character_book` (when no book is attached); strategy evenly / character first / global first
+- UI: World Info screen (list, global toggle, import/export, new/delete, global settings), book screen (search, enable, reorder, add), entry editor with all fields; lorebook picker in character editor (plus "import embedded lorebook") and chat menu
+- Tests: see `./gradlew :app:testDebugUnitTest` (193), lint has no errors
+
+## Rulings / deviations (set 3)
+- Regex keys keep ST's per-message `\u0001` prefix, so `^` does not match at a message start (same as ST)
+- Only the `@@activate` and `@@dont_activate` decorators are parsed; other `@@` lines stay in the content
+- With sticky + cooldown on one entry the cooldown starts when the sticky window ends; `sticky`/`cooldown`/`delay` = 0 or null mean off
+- Scanner expands macros in keys and content itself (budget is measured on expanded text)
+- Author's-note anchors (`ANTop/ANBottom`) are collected but not emitted until set 7; `vectorized` is stored but ignored (set 10); persona lorebook and regex-script processing of WI content not done
+- Implementation was written together with (not before) tests for Tasks 3-7; regex keys have no catastrophic-backtracking guard
+- Final review was a self-review (no reviewer subagent)
+
+## Not verified (set 3)
+- UI not run on a device/emulator; no comparison against real SillyTavern output for the same book + chat
+
 ## Deviations from plan 00 (to confirm)
 - No Hilt yet: manual `AppContainer` (simpler; revisit when graph grows)
 - Ktor client not added: OkHttp only

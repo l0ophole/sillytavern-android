@@ -33,21 +33,21 @@ class TimedState(
         val aSticky = mutableSetOf<String>()
         val aCool = mutableSetOf<String>()
         if (!dryRun) {
-            fun process(map: MutableMap<String, Effect>, out: MutableSet<String>, value: (WorldEntry) -> Int?, ended: (WorldEntry) -> Unit) {
+            fun process(map: MutableMap<String, Effect>, out: MutableSet<String>, value: (WorldEntry) -> Int?, ended: (String, WorldEntry) -> Unit) {
                 for ((key, eff) in map.toMap()) {
                     val e = byId[key]?.entry
                     if (chatLength <= eff.start && !eff.protected) { map.remove(key); continue }
                     if (e == null) { if (chatLength >= eff.end) map.remove(key); continue }
                     if ((value(e) ?: 0) <= 0) { map.remove(key); continue }
-                    if (chatLength >= eff.end) { map.remove(key); ended(e); continue }
+                    if (chatLength >= eff.end) { map.remove(key); ended(key, e); continue }
                     out += key
                 }
             }
-            process(sticky, aSticky, { it.sticky }) { e ->
+            process(sticky, aSticky, { it.sticky }) { key, e ->
                 val cd = e.cooldown ?: 0
-                if (cd > 0) cooldown["${byId.entries.first { it.value.entry === e }.key}"] = Effect(chatLength, chatLength + cd, true)
+                if (cd > 0) cooldown[key] = Effect(chatLength, chatLength + cd, true)
             }
-            process(cooldown, aCool, { it.cooldown }) { }
+            process(cooldown, aCool, { it.cooldown }) { _, _ -> }
         }
         val out = copyWith(sticky, cooldown)
         out.activeSticky = aSticky
