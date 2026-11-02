@@ -11,7 +11,7 @@
 - Backends: OpenAI-compatible chat, Anthropic Messages, text completion (`/completions`), SSE streaming, cancellation, error surfacing
 - ChatController: send, regenerate (new swipe), swipe, continue, impersonate, edit, delete, stop (keeps partial)
 - UI: character list/search/import/export/delete, character editor with avatar, chat screen, settings (connections incl. samplers + keys, personas, presets)
-- Tests: 40+ JVM unit tests (storage, cards, PNG, chat, macros, prompt, backends via MockWebServer, controller)
+- Tests: 35 JVM unit tests (storage, cards, PNG, chat, macros, prompt, backends via MockWebServer, controller)
 - Lint clean of errors (two real issues found and fixed: StateFlow read in composition, literal BOM char)
 
 ## Deviations from plan 00 (to confirm)
