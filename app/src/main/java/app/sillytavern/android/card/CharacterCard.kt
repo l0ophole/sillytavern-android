@@ -89,7 +89,7 @@ object CardCodec {
 
     /** Reads a card from PNG bytes (ccv3 preferred over chara) or raw JSON bytes. */
     fun fromBytes(bytes: ByteArray): CharacterCard {
-        if (!PngChunks.isPng(bytes)) return parse(String(bytes, Charsets.UTF_8).trimStart('﻿'))
+        if (!PngChunks.isPng(bytes)) return parse(String(bytes, Charsets.UTF_8).trimStart(0xFEFF.toChar()))
         val text = PngChunks.textChunks(bytes)
         val b64 = text["ccv3"] ?: text["chara"] ?: error("PNG has no character data")
         return parse(String(java.util.Base64.getDecoder().decode(b64), Charsets.UTF_8))

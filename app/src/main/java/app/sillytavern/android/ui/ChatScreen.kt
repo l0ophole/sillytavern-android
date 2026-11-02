@@ -138,7 +138,7 @@ private fun MessageBubble(m: ChatMessage, isLast: Boolean, generating: Boolean, 
 private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
     val ctl = c.chatController
     var files by remember { mutableStateOf(ctl.chatFiles()) }
-    val current = ctl.state.value.chat?.file
+    val current = ctl.state.collectAsState().value.chat?.file
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Chats") },
