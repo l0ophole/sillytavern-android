@@ -39,13 +39,14 @@ class WorldInfoScanner(
     ): ScanResult {
         val items = entries.map(::item)
         if (items.isEmpty()) return ScanResult(emptyList(), timed)
+        val chatLen = chatNewestFirst.size
+        val effects = timed.prepare(entries, chatLen, dryRun)
         val order = items.withIndex().associate { it.value to it.index }
         val buffer = ScanBuffer(chatNewestFirst, global, settings)
-        val chatLen = chatNewestFirst.size
         var budget = Math.round(settings.budget * maxContext / 100.0).toInt().coerceAtLeast(1)
         if (settings.budgetCap > 0 && budget > settings.budgetCap) budget = settings.budgetCap
 
-        fun active(k: TimedKind, i: Item) = timed.isActive(k, i.src, chatLen)
+        fun active(k: TimedKind, i: Item) = effects.isActive(k, i.src, chatLen)
         val levels = items.map { it.e.delayUntilRecursion }.filter { it > 0 }.distinct().sorted().toMutableList()
         var curLevel = if (levels.isEmpty()) 0 else levels.removeAt(0)
         var state: ScanState? = ScanState.INITIAL
@@ -184,7 +185,7 @@ class WorldInfoScanner(
             }
         }
         val result = activated.values.map { ScanEntry(it.src.book, it.e.copy(content = it.content)) }
-        return ScanResult(result, timed)
+        return ScanResult(result, effects.record(activated.values.map { it.src }, chatLen, dryRun))
     }
 
     private companion object { val KNOWN_DECORATORS = setOf("@@activate", "@@dont_activate") }
