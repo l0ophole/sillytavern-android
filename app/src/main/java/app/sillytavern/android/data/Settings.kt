@@ -44,6 +44,8 @@ data class ConnectionProfile(
     val model: String = "",
     val sampler: SamplerSettings = SamplerSettings(),
     val reasoning: ReasoningSettings = ReasoningSettings(),
+    /** [app.sillytavern.android.api.Providers] id; "custom" for an unlisted OpenAI-compatible server. */
+    val provider: String = "custom",
 )
 
 @Serializable

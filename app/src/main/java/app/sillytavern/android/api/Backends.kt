@@ -2,6 +2,7 @@ package app.sillytavern.android.api
 
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.data.ConnectionProfile
+import app.sillytavern.android.data.ReasoningSettings
 import app.sillytavern.android.prompt.PromptMessage
 import app.sillytavern.android.prompt.model.TextGenSamplerPreset
 import app.sillytavern.android.prompt.Role
@@ -192,22 +193,45 @@ private fun JsonObjectBuilder.putSamplerPreset(p: TextGenSamplerPreset) {
 class OpenAiBackend(client: OkHttpClient) : HttpBackend(client) {
     override fun buildRequest(req: GenerationRequest): Request {
         val s = req.profile.sampler
+        val provider = Providers.forProfile(req.profile)
+        val reasonerOnly = provider.reasoningStyle == ReasoningStyle.DEEPSEEK && req.profile.model.contains("reasoner")
         val body = buildJsonObject {
             put("model", req.profile.model)
             put("messages", JsonArray(req.messages.map {
                 buildJsonObject { put("role", it.role.name.lowercase()); put("content", it.content) }
             }))
-            putSamplers(req)
-            if (s.frequencyPenalty != 0.0) put("frequency_penalty", s.frequencyPenalty)
-            if (s.presencePenalty != 0.0) put("presence_penalty", s.presencePenalty)
-            // Non-standard but widely accepted by OpenAI-compatible servers (OpenRouter, vLLM, ...).
-            if (s.topK > 0) put("top_k", s.topK)
-            if (s.minP > 0) put("min_p", s.minP)
-            if (s.repetitionPenalty != 1.0) put("repetition_penalty", s.repetitionPenalty)
+            if (reasonerOnly) { // deepseek-reasoner rejects/ignores sampler parameters
+                put("max_tokens", s.maxResponseTokens)
+                if (req.stopSequences.isNotEmpty()) put("stop", JsonArray(req.stopSequences.map(::JsonPrimitive)))
+            } else {
+                putSamplers(req)
+                if (s.frequencyPenalty != 0.0) put("frequency_penalty", s.frequencyPenalty)
+                if (s.presencePenalty != 0.0) put("presence_penalty", s.presencePenalty)
+                // Non-standard but widely accepted by OpenAI-compatible servers (OpenRouter, vLLM, ...).
+                if (s.topK > 0) put("top_k", s.topK)
+                if (s.minP > 0) put("min_p", s.minP)
+                if (s.repetitionPenalty != 1.0) put("repetition_penalty", s.repetitionPenalty)
+            }
+            putReasoning(provider.reasoningStyle, req.profile.reasoning)
             put("stream", s.stream)
         }
-        return post(url(req.profile.baseUrl, "/chat/completions"), body,
-            req.apiKey?.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") } ?: emptyMap())
+        val headers = buildMap {
+            putAll(provider.extraHeaders)
+            req.apiKey?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
+        }
+        return post(url(req.profile.baseUrl, "/chat/completions"), body, headers)
+    }
+
+    private fun JsonObjectBuilder.putReasoning(style: ReasoningStyle, r: ReasoningSettings) {
+        val effort = when (r.effort) { "min" -> "minimal"; "max" -> "high"; "low", "medium", "high" -> r.effort; else -> null }
+        when (style) {
+            ReasoningStyle.OPENAI_EFFORT -> effort?.let { put("reasoning_effort", it) }
+            ReasoningStyle.OPENROUTER -> when {
+                r.budgetTokens > 0 -> put("reasoning", buildJsonObject { put("max_tokens", r.budgetTokens) })
+                effort != null -> put("reasoning", buildJsonObject { put("effort", effort) })
+            }
+            ReasoningStyle.DEEPSEEK, ReasoningStyle.NONE -> {}
+        }
     }
 
     override fun parser(req: GenerationRequest, streaming: Boolean): EventParser = object : EventParser {
