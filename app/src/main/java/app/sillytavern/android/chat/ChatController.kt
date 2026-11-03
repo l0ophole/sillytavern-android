@@ -19,6 +19,7 @@ import app.sillytavern.android.macro.VariableStore
 import app.sillytavern.android.quickreply.QuickReplyService
 import app.sillytavern.android.regex.*
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.put
 import app.sillytavern.android.prompt.*
 import app.sillytavern.android.media.*
 import app.sillytavern.android.worldinfo.*
@@ -99,6 +100,7 @@ class ChatController(
         val loaded = existing ?: createChat(character, settings().activePersona.name)
         _state.value = ChatUiState(character = character, chat = loaded, expression = initialExpression(loaded.messages))
         fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
+        fireExt("chat_changed")
     }
 
     fun newChat() {
@@ -107,6 +109,7 @@ class ChatController(
         stop()
         _state.value = ChatUiState(character = c, chat = createChat(c, settings().activePersona.name))
         fireAuto(QuickReplyService.Trigger.NEW_CHAT)
+        fireExt("chat_changed")
     }
 
     /** New chat seeded with the first greeting; alternate greetings become swipes of it (as in SillyTavern). */
@@ -177,6 +180,35 @@ class ChatController(
 
     /** Set after construction (the service reads this controller's chat metadata). */
     var quickReplies: QuickReplyService? = null
+
+    /** Third-party extensions (set 12): receives chat events, supplies prompts, and acts on this chat through [extEnv]. */
+    var extensions: app.sillytavern.android.extensions.ExtensionHost? = null
+        set(v) { field = v; v?.env = extEnv }
+
+    /** Delivers an event to extensions without delaying the chat; a failing script only logs. */
+    private fun fireExt(event: String, data: kotlinx.serialization.json.JsonElement = kotlinx.serialization.json.JsonNull) {
+        val h = extensions ?: return
+        scope.launch { h.fire(event, data) }
+    }
+
+    private val extEnv = object : app.sillytavern.android.extensions.ExtensionEnv {
+        override suspend fun echo(text: String) = host.echo(text, "info")
+        override suspend fun sendMessage(text: String) { withContext(Dispatchers.Main.immediate) { send(text) } }
+        override suspend fun addMessage(name: String, text: String) = host.addMessageAs(name, text)
+        override suspend fun generateQuiet(prompt: String, useHistory: Boolean) = quietGenerate(prompt, useHistory)
+        override suspend fun runCommand(text: String): String {
+            val r = CommandExecutor(host).runText(text.trim())
+            r.error?.let { throw app.sillytavern.android.extensions.ExtensionException(it) }
+            return r.pipe
+        }
+        override fun context(): app.sillytavern.android.extensions.ExtContext {
+            val s = settings()
+            return app.sillytavern.android.extensions.ExtContext(_state.value.character?.card?.name.orEmpty(), s.activePersona.name, chat?.file?.nameWithoutExtension.orEmpty(), messages.size, group != null)
+        }
+        override fun messages(n: Int) = this@ChatController.messages.takeLast(n).map {
+            app.sillytavern.android.extensions.ExtLine(it.name, it.text, it.isUser, it.isSystem)
+        }
+    }
     private var autoRunning = false
 
     private fun chatMeta(): JsonObject = chat?.header?.get("chat_metadata") as? JsonObject ?: JsonObject(emptyMap())
@@ -525,7 +557,7 @@ class ChatController(
         )
         val depthPersona = persona.description.takeIf { it.isNotBlank() && persona.position == 4 }
             ?.let { ExtensionPrompt("persona", it, ExtensionPrompt.IN_CHAT, persona.depth, persona.role) }
-        return listOfNotNull(Summary.extensionPrompt(history, s.summary), depthPersona, note)
+        return listOfNotNull(Summary.extensionPrompt(history, s.summary), depthPersona, note) + extensions?.prompts().orEmpty()
     }
 
     /** Author's Note of the open chat (chat metadata, with global defaults). */
@@ -651,6 +683,7 @@ class ChatController(
     private fun continueSend(msg: ChatMessage, text: String) {
         mutate { it + msg }
         fireAuto(QuickReplyService.Trigger.USER)
+        fireExt("message_sent", kotlinx.serialization.json.buildJsonObject { put("name", msg.name); put("text", msg.text) })
         val idx = messages.lastIndex
         val captionable = settings().activeConnection?.let(Captioner::supported) == true
         if (msg.imagePath != null && settings().media.attachments.autoCaption && captionable) {
@@ -877,6 +910,7 @@ class ChatController(
         val req = makeRequest(worldInfoInput, profile, s)
         val memoryContext = app.sillytavern.android.memory.MemoryContext(chat?.file?.nameWithoutExtension, if (group != null) group?.id else character.fileName, history)
         _state.update { it.copy(generating = true, error = null) }
+        if (targetIndex != null) fireExt("generation_started")
         job = scope.launch {
             val acc = StringBuilder(prefix)
             val thinking = StringBuilder(if (appendTo && targetIndex != null) messages[targetIndex].reasoning.orEmpty() else "")
@@ -916,6 +950,10 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = batch, error = failure) }
+                    if (targetIndex != null) {
+                        fireExt("generation_ended", kotlinx.serialization.json.buildJsonObject { put("success", failure == null) })
+                        if (failure == null) messages.getOrNull(targetIndex)?.let { m -> fireExt("message_received", kotlinx.serialization.json.buildJsonObject { put("name", m.name); put("text", m.text); put("index", targetIndex) }) }
+                    }
                     if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); translateReply(targetIndex); updateExpression(targetIndex); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
                 }
             }
@@ -1110,6 +1148,7 @@ class ChatController(
         val loaded = existing ?: repo.createGroupChat(file, groupGreetings(g, members))
         _state.value = ChatUiState(character = members.firstOrNull(), chat = loaded, group = g, members = members)
         fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
+        fireExt("chat_changed")
     }
 
     /** New group chats start with each enabled member's first greeting (alternates become swipes). */

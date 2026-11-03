@@ -123,6 +123,11 @@ object CommandRegistry {
         ordered.add(def)
         (listOf(def.name) + def.aliases).forEach { defs[it.lowercase()] = def }
     }
+    @Synchronized fun unregister(name: String) {
+        val d = defs[name.lowercase()] ?: return
+        ordered.remove(d)
+        defs.entries.removeAll { it.value === d }
+    }
     fun find(name: String): CommandDef? { ensureLoaded(); return defs[name.lowercase()] }
     fun all(): List<CommandDef> { ensureLoaded(); return ordered.sortedBy { it.name } }
 

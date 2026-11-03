@@ -68,7 +68,8 @@ class QuickJsEngine(
         // A detached scope: a structured parent would wait for the stuck, uninterruptible block.
         return run {
             val work = scope.async { try { block() } catch (e: ScriptFault) { throw e } catch (e: app.cash.quickjs.QuickJsException) { throw ScriptFault(e.message ?: "Script error") } }
-            val done = withTimeoutOrNull(timeoutMs) { work.await() }
+            // Real time, even when the caller runs on a virtual-time test dispatcher.
+            val done = withContext(Dispatchers.Default) { withTimeoutOrNull(timeoutMs) { work.await() } }
             if (done == null && !work.isCompleted) {
                 faulted = true
                 work.cancel()

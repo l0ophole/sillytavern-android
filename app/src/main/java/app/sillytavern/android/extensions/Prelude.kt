@@ -84,7 +84,8 @@ var __d, st, console;
         } else if (kind === 'macro') {
           var m = macros[String(a.name).toLowerCase()];
           if (!m) throw new Error('No such macro: ' + a.name);
-          v = m(a.args || []);
+          call('macroMode', true);
+          try { v = m(a.args || []); } finally { call('macroMode', false); }
           v = v === undefined || v === null ? '' : String(v);
         } else throw new Error('Unknown dispatch kind ' + kind);
         return JSON.stringify({ value: v });
