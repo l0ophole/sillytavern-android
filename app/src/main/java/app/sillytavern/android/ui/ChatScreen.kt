@@ -2,6 +2,8 @@ package app.sillytavern.android.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import app.sillytavern.android.media.*
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,7 +28,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdit: (String) -> Unit, groupId: String? = null, onEditGroup: (String) -> Unit = {}) {
+fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdit: (String) -> Unit, groupId: String? = null, onEditGroup: (String) -> Unit = {}, onGallery: (String) -> Unit = {}) {
     val ctl = c.chatController
     val state by ctl.state.collectAsState()
     val clipboard = LocalClipboardManager.current
@@ -43,6 +45,20 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     var showSummary by remember { mutableStateOf(false) }
     var showPersona by remember { mutableStateOf(false) }
     var showQrSet by remember { mutableStateOf(false) }
+    var showImageGen by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) readScaledImage(ctx, uri, c.settings.settings.value.media.attachments.maxImageSide)?.let { (bytes, name) -> ctl.attachImage(bytes, name) }
+    }
+    val pickFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) runCatching {
+            val bytes = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            require(bytes.size <= 1_000_000) { "Text files up to 1 MB can be attached" }
+            ctl.attachTextFile(bytes.toString(Charsets.UTF_8), displayName(ctx, uri) ?: "file.txt")
+        }.onFailure { e -> scope.launch { snackbar.showSnackbar(e.message ?: "Could not read the file") } }
+    }
+    var attachMenu by remember { mutableStateOf(false) }
     val appSettings by c.settings.settings.collectAsState()
     val bar = remember(appSettings, state.chat?.file, state.character) { c.quickReplies.bar() }
 
@@ -58,7 +74,6 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         val imp = state.impersonation
         if (imp != null) { input = imp; if (!state.generating) ctl.consumeImpersonation() }
     }
-    val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); ctl.clearError() } }
     LaunchedEffect(state.notice) { state.notice?.let { snackbar.showSnackbar(it); ctl.clearNotice() } }
 
@@ -93,6 +108,9 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                             DropdownMenuItem({ Text(tr("Persona…") + " (${appSettings.activePersona.name})") }, { menu = false; showPersona = true })
                             DropdownMenuItem({ Text(tr("Chat lorebook…")) }, { menu = false; showBook = true })
                             DropdownMenuItem({ Text(tr("Chat quick reply set…")) }, { menu = false; showQrSet = true })
+                            DropdownMenuItem({ Text(tr("Generate image…")) }, { menu = false; showImageGen = true })
+                            DropdownMenuItem({ Text(tr("Gallery")) }, { menu = false; onGallery(ctl.imageFolder()) })
+                            DropdownMenuItem({ Text(tr("Stop speaking")) }, { menu = false; ctl.stopSpeaking() })
                             val grp = state.group
                             if (grp != null) {
                                 DropdownMenuItem({ Text(tr(if (state.autoMode) "Auto mode: turn off" else "Auto mode: turn on")) }, { menu = false; ctl.setAutoMode(!state.autoMode) })
@@ -121,11 +139,28 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                 }
             }
             state.group?.let { g -> MemberStrip(g, state.members, state.generating, state.groupQueue, onSpeak = ctl::speak, onMute = ctl::muteMember) }
+            if (state.pendingImage != null || state.pendingFile != null || state.mediaBusy) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                state.pendingImage?.let { p -> app.sillytavern.android.media.MessageMedia.resolve(c.paths.root, p)?.let { f -> coil.compose.AsyncImage(f, null, Modifier.size(48.dp)) } }
+                state.pendingFile?.let { Text("📎 ${it.name}", style = MaterialTheme.typography.labelMedium) }
+                if (state.mediaBusy) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text("  " + tr("Working…"), style = MaterialTheme.typography.labelMedium) }
+                Spacer(Modifier.weight(1f))
+                if (state.pendingImage != null || state.pendingFile != null) TextButton(onClick = { ctl.clearAttachments() }) { Text(tr("Remove")) }
+            }
             Row(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.Bottom) {
+                Box {
+                    TextButton(onClick = { attachMenu = true }) { Text("＋") }
+                    DropdownMenu(attachMenu, { attachMenu = false }) {
+                        DropdownMenuItem({ Text(tr("Image…")) }, { attachMenu = false; pickImage.launch("image/*") })
+                        DropdownMenuItem({ Text(tr("Text file…")) }, { attachMenu = false; pickFile.launch("text/*") })
+                    }
+                }
                 OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text(tr("Message")) }, maxLines = 6)
-                Spacer(Modifier.width(8.dp))
+                if (appSettings.media.stt.enabled) MicButton(c, onText = { t ->
+                    if (appSettings.media.stt.autoSend) ctl.submit(t) else input = if (input.isBlank()) t else input.trimEnd() + " " + t
+                }, onError = { m -> scope.launch { snackbar.showSnackbar(m) } })
+                Spacer(Modifier.width(4.dp))
                 if (state.generating) Button(onClick = { ctl.stop() }) { Text(tr("Stop")) }
-                else Button(enabled = input.isNotBlank(), onClick = { ctl.submit(input); input = "" }) { Text(tr("Send")) }
+                else Button(enabled = input.isNotBlank() || state.pendingImage != null || state.pendingFile != null, onClick = { ctl.submit(input); input = "" }) { Text(tr("Send")) }
             }
           }
           }
@@ -149,6 +184,10 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                     m, index = i, avatar = avatar, look = look, colors = chatColors, shown = shown, shownReasoning = shownReasoning, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
                     onLongPress = { actionsFor = i }, onSwipe = { d -> ctl.swipe(i, d) },
                     onOpenCheckpoint = { ctl.openCheckpoint(i) },
+                    media = {
+                        m.imagePath?.let { MessageImage(c, it, app.sillytavern.android.media.MediaPrompt.captionOf(m)) }
+                        m.fileAttachment?.let { Text("📎 ${it.name}", style = MaterialTheme.typography.labelMedium) }
+                    },
                 )
             }
         }
@@ -161,8 +200,13 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             onDismissRequest = { actionsFor = null },
             title = { Text(tr("Message")) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                     TextButton(onClick = { editing = i; actionsFor = null }) { Text(tr("Edit")) }
+                    if (messages[i].text.isNotBlank()) TextButton(onClick = { ctl.speakMessage(i); actionsFor = null }) { Text(tr("Speak")) }
+                    if (messages[i].imagePath != null) TextButton(onClick = {
+                        val idx = i; actionsFor = null
+                        scope.launch { try { ctl.captionMessage(idx) } catch (e: Exception) { snackbar.showSnackbar("Caption failed: ${e.message}") } }
+                    }) { Text(tr(if (messages[i].imageCaption != null) "Re-caption image" else "Caption image")) }
                     TextButton(onClick = { clipboard.setText(AnnotatedString(messages[i].text)); actionsFor = null }) { Text(tr("Copy")) }
                     TextButton(onClick = { ctl.setHidden(i, !messages[i].isHidden); actionsFor = null }) {
                         Text(tr(if (messages[i].isHidden) "Unhide (include in prompt)" else "Hide (exclude from prompt)"))
@@ -177,6 +221,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             dismissButton = { TextButton(onClick = { actionsFor = null }) { Text(tr("Close")) } },
         )
     }
+    if (showImageGen) GenerateImageDialog({ showImageGen = false }) { ctl.generateImageAsync(it) }
     checkpointFor?.let { i ->
         var name by remember(i) { mutableStateOf(messages.getOrNull(i)?.bookmarkLink.orEmpty()) }
         AlertDialog(
@@ -237,6 +282,7 @@ private fun AvatarImage(file: File?, name: String, style: app.sillytavern.androi
 private fun MessageBubble(
     m: ChatMessage, index: Int, avatar: File?, look: app.sillytavern.android.appearance.AppearanceSettings, colors: ChatColors,
     shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit, onOpenCheckpoint: () -> Unit,
+    media: @Composable ColumnScope.() -> Unit = {},
 ) {
     val style = look.messageStyle
     val color = when { m.isNarrator -> colors.narrator; m.isUser -> colors.user; else -> colors.bot }
@@ -262,7 +308,9 @@ private fun MessageBubble(
                     }
                     if (open) Text(r, style = MaterialTheme.typography.bodySmall, color = colors.italics, modifier = Modifier.padding(bottom = 6.dp))
                 }
+                media()
                 if (m.text.isEmpty() && generating) Text("…", color = colors.text)
+                else if (m.text.isEmpty() && m.imagePath != null) {}
                 else MarkdownText(shown + if (m.isHidden) "  (" + tr("hidden") + ")" else "", render = look.renderMarkdown, allowHtml = look.allowHtml)
                 if (document) HorizontalDivider(Modifier.padding(top = 10.dp), color = colors.italics.copy(alpha = 0.25f))
                 if (isLast && !m.isUser && (m.swipes.size > 1 || !generating)) {

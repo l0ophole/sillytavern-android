@@ -195,3 +195,24 @@ See docs/ROADMAP.md.
 - Nothing run on a device/emulator: bubble layouts, avatar shapes, background dimming, AMOLED colors, the color text fields, markdown rendering of long streamed messages (re-parsed on every token), link taps
 - Themes checked against hand-written samples shaped like ST's `Dark Lite.json`, not against all bundled themes
 - Not implemented: `/bg` command, per-character backgrounds, locked backgrounds per chat, message-level `<style>`/tables/iframes, RTL layout testing, reasoning text is shown as plain text (not markdown)
+
+
+## Done (feature set 9: media extensions) — plan: docs/plans/08-media.md
+- Attachments (`media/MessageMedia.kt`, `MediaPrompt.kt`): ST `extra.image` / `inline_image` / `title` / `file` plus `extra.image_caption`; images are stored in `user/images/<character or group>/` and referenced by a path relative to the data root (paths that escape the root are refused). The prompt builders leave a marker that `ChatController.makeRequest` turns into image parts (OpenAI `image_url`, Anthropic `image` blocks, Gemini `inlineData`, Ollama `images`) or into `[Image: caption]` text; text-completion connections always get captions. Text files (≤1 MB) are inlined into the prompt as `[File: name] … [End of file]`. Images are scaled to a longest side (default 1568 px) when attached
+- Captioning (`media/Captioner.kt`): the active chat connection answers a caption prompt with the image; optional auto-caption before the reply; `/caption [mes=N] [prompt]`; message action "Caption image"
+- TTS (`media/TtsText.kt`, `TtsClient.kt`, `AndroidMedia.kt`): Android system voices, OpenAI-compatible `/audio/speech` and ElevenLabs; read everything / only quotes / only narration, skip code blocks and `*actions*`, voice per character (`Name=voice` lines), speed/pitch, auto-play of new replies, long text split at sentences, `/speak [voice=Name] text`, message action "Speak", menu "Stop speaking"
+- STT (`media/SttClient.kt`, `AndroidMedia.kt`): Android `SpeechRecognizer` or a Whisper-compatible `/audio/transcriptions` server (record, tap again to transcribe); mic button in the input bar, optional auto-send
+- Image generation (`media/ImageGen.kt`): AUTOMATIC1111/Forge `txt2img`, ComfyUI (workflow with `%prompt%`-style placeholders, queue + poll + `/view`), NovelAI (zip response), OpenAI-compatible `/images/generations`; `/sd [quiet=true] [negative=…] [you|me|scene|last|raw_last|face|background|free prompt]` and a "Generate image…" chat menu entry; the main model writes the keyword prompt from a per-mode instruction (or the card text is used when that is off); prefix with `{prompt}` placeholder, negative prompt. The picture is added as a system message from the character with `inline_image` and the prompt as `title`
+- Gallery (`media/GalleryRepository.kt`, `ui/GalleryScreen.kt`): folders and grids per character/group, add from the device, save a copy, delete; reachable from Settings and the chat menu
+- Settings screen "Speech, images & attachments"; API keys go to the encrypted secret store (`media:tts`, `media:stt`, `media:image`)
+- Verification: 701 JVM unit tests pass (62 new), lint 0 errors, debug APK builds
+
+## Rulings / deviations (set 9)
+- Executed on `main`, native, no subagents; UI tasks compile + lint only
+- Generated images are system messages (not in the prompt except as their prompt text `[Image: …]`), like ST
+- Only the main connection captions images; no extras/local caption models (set 10)
+- Not built: video/audio attachments, SD extras (hires fix, ADetailer, upscaler, LoRA lists, per-character prefixes, interactive mode, auto-generation every N messages), local TTS servers other than OpenAI-compatible (Coqui, XTTS, Silero, AllTalk, Edge), streaming TTS, local Whisper/Vosk, wake-word/continuous listening, image swipes, expression sprites (set 10)
+
+## Not verified (set 9)
+- Nothing ran on a device/emulator: system TTS, MediaPlayer, SpeechRecognizer, MediaRecorder, the RECORD_AUDIO prompt, image picker + downscaling, grid/viewer dialogs
+- HTTP clients are tested against MockWebServer with request shapes written from the services' documentation, not against real A1111/ComfyUI/NovelAI/OpenAI/ElevenLabs/Whisper servers; vision payloads were never sent to a real model

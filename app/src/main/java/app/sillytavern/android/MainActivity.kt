@@ -40,7 +40,8 @@ private fun AppNav(c: AppContainer) {
         }
         composable("chat/{file}", listOf(navArgument("file") { type = NavType.StringType })) {
             ChatScreen(c, it.arguments!!.getString("file")!!, onBack = { nav.popBackStack() },
-                onEdit = { f -> nav.navigate("edit/${android.net.Uri.encode(f)}") })
+                onEdit = { f -> nav.navigate("edit/${android.net.Uri.encode(f)}") },
+                onGallery = { f -> nav.navigate("gallery/${android.net.Uri.encode(f)}") })
         }
         composable("groupchat/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
             ChatScreen(c, "", groupId = it.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, onEdit = {},
@@ -58,7 +59,13 @@ private fun AppNav(c: AppContainer) {
                 onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") },
                 onWorlds = { nav.navigate("worlds") },
                 onQuickReplies = { nav.navigate("quickreplies") }, onRegex = { nav.navigate("regex") },
-                onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") })
+                onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") },
+                onMedia = { nav.navigate("media") }, onGallery = { nav.navigate("gallery") })
+        }
+        composable("media") { MediaSettingsScreen(c, onBack = { nav.popBackStack() }) }
+        composable("gallery") { GalleryFoldersScreen(c, onOpen = { nav.navigate("gallery/${android.net.Uri.encode(it)}") }, onBack = { nav.popBackStack() }) }
+        composable("gallery/{folder}", listOf(navArgument("folder") { type = NavType.StringType })) {
+            GalleryScreen(c, it.arguments!!.getString("folder")!!, onBack = { nav.popBackStack() })
         }
         composable("appearance") { AppearanceScreen(c, onBack = { nav.popBackStack() }) }
         composable("promptmanager") { PromptManagerScreen(c, onBack = { nav.popBackStack() }) }

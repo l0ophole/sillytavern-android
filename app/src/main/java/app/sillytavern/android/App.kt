@@ -1,6 +1,7 @@
 package app.sillytavern.android
 
 import app.sillytavern.android.appearance.BackgroundRepository
+import app.sillytavern.android.media.*
 import app.sillytavern.android.regex.RegexRepository
 import app.sillytavern.android.quickreply.QuickReplyRepository
 import app.sillytavern.android.quickreply.QuickReplyService
@@ -30,6 +31,15 @@ class AppContainer(app: Application) {
     val regexScripts = RegexRepository(paths)
     val quickReplyRepo = QuickReplyRepository(paths)
     val backgrounds = BackgroundRepository(paths)
+    val gallery = GalleryRepository(paths)
+    val tts = TtsService(
+        { settings.settings.value.media.tts }, { secrets.get(MediaSettings.KEY_TTS) },
+        AndroidSpeechPlayer(app),
+    )
+    val stt = SttService(
+        { settings.settings.value.media.stt }, { secrets.get(MediaSettings.KEY_STT) },
+        AndroidVoiceInput(app),
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
@@ -54,7 +64,7 @@ class AppContainer(app: Application) {
         characterKey = { chatController.characterFileName() }, automationIds = { chatController.automationIds() },
     ).also { chatController.quickReplies = it }
 
-    init { chatController.runStartupQuickReplies() }
+    init { chatController.tts = tts; chatController.runStartupQuickReplies() }
 }
 
 class SillyTavernApp : Application() {

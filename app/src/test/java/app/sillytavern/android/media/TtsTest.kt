@@ -45,6 +45,12 @@ class TtsTextTest {
         assertEquals("alloy", TtsText.voiceFor("Bob", v))
     }
 
+    @Test fun voiceMapTextRoundTrips() {
+        val m = TtsText.parseVoiceMap("Ann = nova\n\nbad line\n=x\nBob=a=b\nEve=")
+        assertEquals(mapOf("Ann" to "nova", "Bob" to "a=b"), m)
+        assertEquals(m, TtsText.parseVoiceMap(TtsText.formatVoiceMap(m)))
+    }
+
     @Test fun longTextIsSplitAtSentences() {
         val text = (1..50).joinToString(" ") { "Sentence number $it is here." }
         val parts = TtsText.chunks(text, 200)

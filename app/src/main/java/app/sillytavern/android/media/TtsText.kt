@@ -41,4 +41,11 @@ object TtsText {
         if (cur.isNotEmpty()) out += cur.toString()
         return out
     }
+
+    /** "Name=voice" per line -> map (blank lines and lines without `=` are ignored). */
+    fun parseVoiceMap(text: String): Map<String, String> = text.lineSequence().mapNotNull { l ->
+        val i = l.indexOf('='); if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
+    }.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }.toMap()
+
+    fun formatVoiceMap(map: Map<String, String>): String = map.entries.joinToString("\n") { "${it.key}=${it.value}" }
 }
