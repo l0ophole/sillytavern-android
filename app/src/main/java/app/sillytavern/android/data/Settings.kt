@@ -149,6 +149,8 @@ data class AppSettings(
     val appearance: app.sillytavern.android.appearance.AppearanceSettings = app.sillytavern.android.appearance.AppearanceSettings(),
     // --- Media extensions (feature set 9) ---
     val media: app.sillytavern.android.media.MediaSettings = app.sillytavern.android.media.MediaSettings(),
+    // --- Local ML (feature set 10) ---
+    val memory: app.sillytavern.android.memory.MemorySettings = app.sillytavern.android.memory.MemorySettings(),
 ) {
     val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()

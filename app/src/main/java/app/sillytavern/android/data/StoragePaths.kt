@@ -17,11 +17,15 @@ class StoragePaths(val root: File) {
     val themes = File(root, "themes")
     /** Chat images and gallery files live in `user/images/<folder>/` (stored in messages as paths relative to [root]). */
     val userImages = File(root, "user/images")
+    /** Vector collections, Data Bank documents and expression sprites (set 10). */
+    val vectors = File(root, "user/vectors")
+    val dataBank = File(root, "user/data-bank")
+    val sprites = File(root, "user/sprites")
     val settingsFile = File(root, "settings.json")
     val secretsFile = File(root, "secrets.enc.json")
 
     fun ensure(): StoragePaths {
-        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats, backgrounds, themes, userImages).forEach { it.mkdirs() }
+        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats, backgrounds, themes, userImages, vectors, dataBank, sprites).forEach { it.mkdirs() }
         return this
     }
 
