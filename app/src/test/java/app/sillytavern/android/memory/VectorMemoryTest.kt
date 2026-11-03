@@ -103,7 +103,7 @@ class VectorMemoryTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MemoryControllerTest : ChatFeaturesTestBase() {
-    private fun service(settings: MemorySettings) = MemoryService(VectorStore(paths.vectors), { settings }, { null })
+    private fun service(settings: MemorySettings) = MemoryService(VectorStore(paths.vectors), paths.dataBank, { settings }, { null })
 
     @Test fun recalledPastEventsReachThePrompt() = runTest {
         val vs = VectorSettings(enabled = true, protectRecent = 2, queryMessages = 1, scoreThreshold = 0.1)
@@ -128,7 +128,7 @@ class MemoryControllerTest : ChatFeaturesTestBase() {
 
     @Test fun embeddingFailureStillGeneratesAndNotifies() = runTest {
         val broken = object : Embedder { override val id = "x"; override suspend fun embed(texts: List<String>): List<FloatArray> = error("boom") }
-        memoryService = MemoryService(VectorStore(paths.vectors), { MemorySettings(embedder = EmbedderSettings(EmbedderKind.OPENAI), vector = VectorSettings(enabled = true, protectRecent = 0)) }, { null }, { _, _ -> broken })
+        memoryService = MemoryService(VectorStore(paths.vectors), paths.dataBank, { MemorySettings(embedder = EmbedderSettings(EmbedderKind.OPENAI), vector = VectorSettings(enabled = true, protectRecent = 0)) }, { null }, { _, _ -> broken })
         val c = controller(); c.open(ann); advanceUntilIdle()
         c.send("hello there"); advanceUntilIdle()
         assertEquals("reply", c.state.value.chat!!.messages.last().text)

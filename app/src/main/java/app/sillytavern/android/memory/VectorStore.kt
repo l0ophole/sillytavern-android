@@ -28,6 +28,10 @@ class VectorStore(private val dir: File) {
     fun ids(name: String, embedderId: String): Set<String> =
         load(name).takeIf { it.embedderId == embedderId }?.entries?.keys?.toSet().orEmpty()
 
+    /** Ids stored for [name] whatever embedder produced them. */
+    @Synchronized
+    fun idsAnyEmbedder(name: String): Set<String> = load(name).entries.keys.toSet()
+
     @Synchronized
     fun size(name: String): Int = load(name).entries.size
 
@@ -43,8 +47,8 @@ class VectorStore(private val dir: File) {
     @Synchronized
     fun remove(name: String, ids: Collection<String>) {
         val c = load(name)
-        if (ids.none { c.entries.remove(it) != null }) return
-        write(name, c)
+        val removed = ids.count { c.entries.remove(it) != null }
+        if (removed > 0) write(name, c)
     }
 
     @Synchronized

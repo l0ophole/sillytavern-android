@@ -158,6 +158,13 @@ class VectorStoreTest {
         assertEquals(0, VectorStore(dir).size("c"))
     }
 
+    @Test fun removeTakesAllGivenIds() {
+        val s = VectorStore(tmp.newFolder())
+        s.insert("c", "e", listOf("a", "b", "c", "d").map { VectorEntry(it, it, v(1f)) })
+        s.remove("c", listOf("a", "b", "c"))
+        assertEquals(setOf("d"), s.ids("c", "e"))
+    }
+
     @Test fun corruptFileIsTreatedAsEmpty() {
         val dir = tmp.newFolder()
         java.io.File(dir, "bad.vec").writeText("garbage")
