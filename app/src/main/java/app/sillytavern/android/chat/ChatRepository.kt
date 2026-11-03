@@ -47,8 +47,11 @@ class ChatRepository(private val paths: StoragePaths) {
         return Chat(file, header, initial).also(::save)
     }
 
-    fun load(file: File): Chat {
-        val lines = file.readLines().filter { it.isNotBlank() }
+    fun load(file: File): Chat = parse(file.readText(), file)
+
+    /** Parses chat JSONL text (header line optional) into a [Chat] attached to [file]. */
+    fun parse(text: String, file: File?): Chat {
+        val lines = text.lines().filter { it.isNotBlank() }
         require(lines.isNotEmpty()) { "Empty chat file" }
         val first = json.parseToJsonElement(lines.first()).jsonObject
         // SillyTavern header has no "mes"; tolerate files lacking a header.
@@ -61,10 +64,12 @@ class ChatRepository(private val paths: StoragePaths) {
         )
     }
 
+    fun serialize(chat: Chat): String =
+        (listOf(chat.header) + chat.messages.map { it.toJson() }).joinToString("\n") { it.toString() } + "\n"
+
     fun save(chat: Chat) {
         val f = requireNotNull(chat.file) { "Chat has no file" }
-        val text = (listOf(chat.header) + chat.messages.map { it.toJson() }).joinToString("\n") { it.toString() } + "\n"
-        f.writeAtomic(text)
+        f.writeAtomic(serialize(chat))
     }
 
     /** Renames the chat file (extension kept, name sanitized); returns the new file, or the old one if the name is taken. */

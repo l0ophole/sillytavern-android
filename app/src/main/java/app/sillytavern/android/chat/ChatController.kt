@@ -339,6 +339,32 @@ class ChatController(
         return out.toString().trim()
     }
 
+    // ---------------------------------------------------------------- import / export
+
+    /** Imports [text] (ST JSONL, Ooba, Agnai, CAI Tools or Kobold Lite) as new chat(s) of the open character / group; returns the last file. */
+    fun importChat(text: String): Result<File> = runCatching {
+        val dir = chatDirectory() ?: error("Open a character or group first")
+        val charName = group?.name ?: _state.value.character?.card?.name ?: error("Open a character or group first")
+        val imported = ChatIo.import(text, settings().activePersona.name, charName, repo).getOrThrow()
+        val stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd@HH'h'mm'm'ss's'"))
+        var last: File? = null
+        for ((i, c) in imported.withIndex()) {
+            val base = (if (group != null) "$stamp imported" else "${app.sillytavern.android.data.StoragePaths.sanitizeFileName(charName)} - $stamp imported") + if (i > 0) " ${i + 1}" else ""
+            var file = File(dir, "$base.jsonl"); var n = 1
+            while (file.exists()) file = File(dir, "$base ${n++}.jsonl")
+            repo.save(c.copy(file = file))
+            group?.let { g -> updateGroup { it.copy(chats = it.chats + file.nameWithoutExtension) } }
+            last = file
+        }
+        last ?: error("Nothing to import")
+    }
+
+    /** Chat file contents as SillyTavern JSONL, or plain `Name: text` blocks when [asText]. */
+    fun exportChat(file: File, asText: Boolean): String {
+        val c = repo.load(file)
+        return if (asText) ChatIo.exportText(c.messages) else repo.serialize(c)
+    }
+
     // ---------------------------------------------------------------- hide, branches, checkpoints
 
     fun setHidden(index: Int, hidden: Boolean) {

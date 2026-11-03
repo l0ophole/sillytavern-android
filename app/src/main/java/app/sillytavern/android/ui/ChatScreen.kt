@@ -219,24 +219,58 @@ private fun MessageBubble(m: ChatMessage, shown: String, shownReasoning: String?
 @Composable
 private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
     val ctl = c.chatController
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var files by remember { mutableStateOf(ctl.chatFiles()) }
     val current = ctl.state.collectAsState().value.chat?.file
+    var message by remember { mutableStateOf<String?>(null) }
+    var pendingExport by remember { mutableStateOf<Pair<File, Boolean>?>(null) }
+    val importer = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = runCatching { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) } }
+        text.onFailure { message = "Could not read the file: ${it.message}" }
+        text.onSuccess { t ->
+            ctl.importChat(t).onSuccess { f -> files = ctl.chatFiles(); ctl.openChatFile(f); onDismiss() }
+                .onFailure { message = "Import failed: ${it.message}" }
+        }
+    }
+    val exporter = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val (file, asText) = pendingExport ?: return@rememberLauncherForActivityResult
+        pendingExport = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val data = ctl.exportChat(file, asText)
+            ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(data.toByteArray(Charsets.UTF_8)) }
+        }.onFailure { message = "Export failed: ${it.message}" }.onSuccess { message = "Exported" }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Chats") },
         text = {
-            LazyColumn {
-                itemsIndexed(files) { _, f: File ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(modifier = Modifier.weight(1f), onClick = { ctl.openChatFile(f); onDismiss() }) {
-                            Text(f.nameWithoutExtension + if (f == current) "  ✓" else "", maxLines = 2)
+            Column {
+                message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    itemsIndexed(files) { _, f: File ->
+                        var rowMenu by remember { mutableStateOf(false) }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(modifier = Modifier.weight(1f), onClick = { ctl.openChatFile(f); onDismiss() }) {
+                                Text(f.nameWithoutExtension + if (f == current) "  ✓" else "", maxLines = 2)
+                            }
+                            Box {
+                                TextButton(onClick = { rowMenu = true }) { Text("⋮") }
+                                DropdownMenu(rowMenu, { rowMenu = false }) {
+                                    DropdownMenuItem({ Text("Export as JSONL") }, { rowMenu = false; pendingExport = f to false; exporter.launch(f.nameWithoutExtension + ".jsonl") })
+                                    DropdownMenuItem({ Text("Export as text") }, { rowMenu = false; pendingExport = f to true; exporter.launch(f.nameWithoutExtension + ".txt") })
+                                    DropdownMenuItem({ Text("Delete") }, { rowMenu = false; ctl.deleteChatFile(f); files = ctl.chatFiles() })
+                                }
+                            }
                         }
-                        TextButton(onClick = { ctl.deleteChatFile(f); files = ctl.chatFiles() }) { Text("🗑") }
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = { importer.launch(arrayOf("*/*")) }) { Text("Import…") } },
     )
 }
 
