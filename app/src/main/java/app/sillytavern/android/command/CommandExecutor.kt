@@ -11,7 +11,30 @@ interface CommandHost {
     suspend fun echo(text: String, severity: String = "info")
     /** Runs a stored script (Quick Reply `set.label`); null when no such script exists. */
     suspend fun runStoredScript(name: String, executor: CommandExecutor): String? = null
+
+    // --- chat access (implemented by ChatController) ---
+    suspend fun sendUser(text: String): Unit = unavailable()
+    suspend fun addSystemMessage(text: String): Unit = unavailable()
+    suspend fun addMessageAs(name: String, text: String): Unit = unavailable()
+    suspend fun generateReply(): Unit = unavailable()
+    suspend fun continueLast(): Unit = unavailable()
+    suspend fun regenerate(): Unit = unavailable()
+    suspend fun swipeBy(delta: Int): Unit = unavailable()
+    suspend fun impersonate(): String = unavailable()
+    suspend fun deleteMessages(range: IntRange): Unit = unavailable()
+    suspend fun hideMessages(range: IntRange, hidden: Boolean): Unit = unavailable()
+    suspend fun setInput(text: String): Unit = unavailable()
+    fun messageCount(): Int = 0
+    fun chatText(range: IntRange?, names: Boolean): String = unavailable()
+    suspend fun generateQuiet(prompt: String, useHistory: Boolean): String = unavailable()
+    suspend fun newChat(): Unit = unavailable()
+    suspend fun renameChat(name: String): Unit = unavailable()
+    fun chatName(): String = unavailable()
+    suspend fun setChatBook(name: String?): Unit = unavailable()
+    suspend fun switchPersona(name: String): Boolean = unavailable()
 }
+
+private fun unavailable(): Nothing = throw CommandError("This command needs an open chat")
 
 data class Limits(val maxLoopIterations: Int = 100_000, val maxCallDepth: Int = 32)
 data class CommandResult(val pipe: String, val error: String? = null, val aborted: Boolean = false)

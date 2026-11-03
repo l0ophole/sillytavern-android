@@ -161,4 +161,52 @@ class ChatControllerTest {
         assertTrue(lastReq!!.textPrompt.contains("hi"))
         assertTrue(lastReq!!.messages.isEmpty())
     }
+
+    // --- set 5: commands ---
+    @Test fun unknownCommandNotSentToModel() = runTest {
+        val c = controller(); c.open(ch)
+        c.submit("/nonsense x"); advanceUntilIdle()
+        assertNull(lastReq); assertEquals(1, c.state.value.chat!!.messages.size)
+        assertTrue(c.state.value.error!!.contains("Unknown command"))
+    }
+    @Test fun slashSpaceSentAsChat() = runTest {
+        val c = controller(); c.open(ch)
+        c.submit("/ shrug"); advanceUntilIdle()
+        assertEquals("/ shrug", c.state.value.chat!!.messages[1].text)
+    }
+    @Test fun sysCommandAddsNarratorAndPromptIncludesIt() = runTest {
+        val c = controller(); c.open(ch)
+        c.submit("/sys The wind howls."); advanceUntilIdle()
+        val m = c.state.value.chat!!.messages.last()
+        assertTrue(m.isSystem && m.isNarrator)
+        c.send("go on"); advanceUntilIdle()
+        assertTrue(lastReq!!.messages.any { it.content.contains("The wind howls.") })
+    }
+    @Test fun hiddenMessageExcludedFromPrompt() = runTest {
+        val c = controller(); c.open(ch)
+        c.send("secret one"); advanceUntilIdle()
+        c.submit("/hide 1"); advanceUntilIdle()
+        c.send("next"); advanceUntilIdle()
+        assertFalse(lastReq!!.messages.any { it.content.contains("secret one") })
+        c.submit("/unhide 1"); advanceUntilIdle()
+        c.send("again"); advanceUntilIdle()
+        assertTrue(lastReq!!.messages.any { it.content.contains("secret one") })
+    }
+    @Test fun triggerGeneratesAndPipelineWaits() = runTest {
+        val c = controller(); c.open(ch)
+        c.submit("/send hello there | /trigger | /setvar key=done yes"); advanceUntilIdle()
+        assertEquals(listOf("Hello", "hello there", "partial"), c.state.value.chat!!.messages.map { it.text })
+        assertEquals("yes", c.variableStore().get("done", false))
+    }
+    @Test fun genRawDoesNotTouchChat() = runTest {
+        val c = controller(); c.open(ch)
+        c.submit("/genraw tell me | /setvar key=out"); advanceUntilIdle()
+        assertEquals("partial", c.variableStore().get("out", false)); assertEquals(1, c.state.value.chat!!.messages.size)
+    }
+    @Test fun cutAndSetInput() = runTest {
+        val c = controller(); c.open(ch)
+        c.send("one"); advanceUntilIdle()
+        c.submit("/cut 1-2 | /setinput draft"); advanceUntilIdle()
+        assertEquals(1, c.state.value.chat!!.messages.size); assertEquals("draft", c.state.value.impersonation)
+    }
 }

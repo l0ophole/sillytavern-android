@@ -100,9 +100,9 @@ object PromptManagerBuilder {
             GenerationMode.NORMAL -> ""
         }.takeIf { it.isNotBlank() }?.let { PromptMessage(Role.SYSTEM, it) }
 
-        var history = i.history.filterNot { it.isSystem }.map { m ->
+        var history = i.history.filter { it.inPrompt }.map { m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
-            PromptMessage(if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
+            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
         }
         if (history.isEmpty() && pm.sendIfEmpty.isNotBlank()) history = listOf(PromptMessage(Role.USER, x(pm.sendIfEmpty)))
         val newChat = x(pm.newChatPrompt).takeIf { it.isNotBlank() && histIdx >= 0 }?.let { PromptMessage(Role.SYSTEM, it) }
@@ -120,6 +120,7 @@ object PromptManagerBuilder {
     private fun wiFormat(text: String, pm: PromptManagerPreset) = if (text.isBlank()) "" else pm.wiFormat.replace("{0}", text)
 
     private fun withName(m: PromptMessage, i: PromptInput): PromptMessage {
+        if (m.role == Role.SYSTEM) return m
         val impersonate = i.mode == GenerationMode.IMPERSONATE
         val isUserSide = (m.role == Role.USER) != impersonate
         return m.copy(content = "${if (isUserSide) i.persona.name else i.card.name}: ${m.content}")

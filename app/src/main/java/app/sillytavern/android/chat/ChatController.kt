@@ -11,6 +11,7 @@ import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
+import app.sillytavern.android.command.*
 import app.sillytavern.android.macro.VariableStore
 import kotlinx.serialization.json.JsonObject
 import app.sillytavern.android.prompt.*
@@ -26,6 +27,8 @@ data class ChatUiState(
     val error: String? = null,
     /** Text produced by impersonate, to place into the input box. */
     val impersonation: String? = null,
+    /** Transient message from `/echo` for the UI to show once. */
+    val notice: String? = null,
 )
 
 /**
@@ -113,6 +116,104 @@ class ChatController(
 
     fun clearError() = _state.update { it.copy(error = null) }
     fun consumeImpersonation() = _state.update { it.copy(impersonation = null) }
+
+    /** Entry point for the input box: `/commands` run through the command engine, anything else is sent as chat. */
+    fun submit(text: String) {
+        if (!CommandParser.isCommand(text)) { send(text); return }
+        scope.launch {
+            val r = CommandExecutor(host).runText(text.trim())
+            if (r.error != null) _state.update { it.copy(error = r.error) }
+        }
+    }
+
+    fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    private val host = ControllerHost()
+
+    private inner class ControllerHost : CommandHost {
+        override val variables get() = variableStore()
+        override fun macroContext(): MacroContext {
+            val s = settings(); val c = _state.value.character
+            return MacroContext(
+                user = s.activePersona.name, char = c?.card?.name.orEmpty(),
+                description = c?.card?.description.orEmpty(), personality = c?.card?.personality.orEmpty(),
+                scenario = c?.card?.scenario.orEmpty(), persona = s.activePersona.description,
+                chat = ChatMacroView(messages), vars = variableStore(),
+            )
+        }
+        override suspend fun echo(text: String, severity: String) { _state.update { it.copy(notice = text) } }
+        override suspend fun sendUser(text: String) { if (text.isNotBlank()) mutate { it + ChatMessage.user(settings().activePersona.name, text.trim()) } }
+        override suspend fun addSystemMessage(text: String) { mutate { it + ChatMessage.narrator(text) } }
+        override suspend fun addMessageAs(name: String, text: String) { mutate { it + ChatMessage.assistant(name, text) } }
+        override suspend fun generateReply() { waitIdle(); generateNew(); job?.join() }
+        override suspend fun continueLast() { waitIdle(); this@ChatController.continueLast(); job?.join() }
+        override suspend fun regenerate() { waitIdle(); this@ChatController.regenerate(); job?.join() }
+        override suspend fun swipeBy(delta: Int) { if (messages.isNotEmpty()) swipe(messages.lastIndex, delta); job?.join() }
+        override suspend fun impersonate(): String {
+            waitIdle(); this@ChatController.impersonate(); job?.join()
+            return _state.value.impersonation.orEmpty()
+        }
+        override suspend fun deleteMessages(range: IntRange) {
+            mutate { l -> l.filterIndexed { i, _ -> i !in range } }
+        }
+        override suspend fun hideMessages(range: IntRange, hidden: Boolean) {
+            mutate { l -> l.mapIndexed { i, m -> if (i in range) m.withHidden(hidden) else m } }
+        }
+        override suspend fun setInput(text: String) { _state.update { it.copy(impersonation = text) } }
+        override fun messageCount() = messages.size
+        override fun chatText(range: IntRange?, names: Boolean): String =
+            messages.filterIndexed { i, _ -> range == null || i in range }
+                .joinToString("\n") { if (names) "${it.name}: ${it.text}" else it.text }
+        override suspend fun generateQuiet(prompt: String, useHistory: Boolean): String = quietGenerate(prompt, useHistory)
+        override suspend fun newChat() { this@ChatController.newChat() }
+        override suspend fun renameChat(name: String) {
+            val cur = chat ?: return; val f = cur.file ?: return
+            if (name.isBlank()) throw CommandError("Name required")
+            persist()
+            val nf = repo.rename(f, name)
+            _state.update { st -> st.chat?.let { st.copy(chat = it.copy(file = nf)) } ?: st }
+        }
+        override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
+        override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun switchPersona(name: String): Boolean {
+            val p = settings().personas.firstOrNull { it.name.equals(name, true) } ?: return false
+            updateSettings { it.copy(activePersonaId = p.id) }
+            return true
+        }
+        private suspend fun waitIdle() { job?.join() }
+    }
+
+    /** One-off generation that is not added to the chat (used by /gen and /genraw). */
+    private suspend fun quietGenerate(prompt: String, useHistory: Boolean): String {
+        val character = _state.value.character ?: throw CommandError("This command needs an open chat")
+        val s = settings()
+        val profile = s.activeConnection ?: throw CommandError("No connection configured. Add one in Settings.")
+        val persona = s.activePersona
+        val history = (if (useHistory) messages.filter { it.inPrompt } else emptyList()) + ChatMessage.user(persona.name, prompt)
+        val input = PromptInput(
+            card = character.card, persona = persona, preset = s.activePreset, history = history,
+            maxContextTokens = profile.sampler.maxContextTokens, maxResponseTokens = profile.sampler.maxResponseTokens,
+            counter = counterFor(profile.type), promptManager = s.activePromptManager,
+            systemPrompt = if (profile.type.usesTextPrompt) s.activeSystemPrompt else null, vars = variableStore(),
+        )
+        val req = makeRequest(input, profile, s)
+        val backend = backendFor(profile.type)
+        val out = StringBuilder()
+        val stream: Flow<Chunk> = if (backend is ChunkBackend) ToolLoop.run(backend, req, toolRegistry)
+        else backend.generate(req).map { Chunk.Text(it) }
+        stream.collect { if (it is Chunk.Text) out.append(it.text) }
+        return out.toString().trim()
+    }
+
+    private fun makeRequest(input: PromptInput, profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): GenerationRequest =
+        if (profile.type.usesTextPrompt) {
+            val formatted = PromptBuilder.buildText(input, s.activeInstruct, s.activeContext)
+            GenerationRequest(
+                profile, apiKey(profile.id), emptyList(), formatted.text,
+                stopSequences = (profile.sampler.stopSequences + formatted.stopStrings).distinct(),
+                sampler = s.activeSamplerPreset,
+            )
+        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(input), "")
 
     fun send(text: String) {
         if (text.isBlank() || _state.value.generating) return
@@ -203,14 +304,7 @@ class ChatController(
             if (!dryRun && entries.isNotEmpty()) _state.update { st -> st.copy(chat = st.chat?.let { WorldInfoRunner.withTimed(it, timed) }) }
             input.copy(worldInfo = prompt)
         } ?: input
-        val req = if (textMode) {
-            val formatted = PromptBuilder.buildText(worldInfoInput, s.activeInstruct, s.activeContext)
-            GenerationRequest(
-                profile, apiKey(profile.id), emptyList(), formatted.text,
-                stopSequences = (profile.sampler.stopSequences + formatted.stopStrings).distinct(),
-                sampler = s.activeSamplerPreset,
-            )
-        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(worldInfoInput), "")
+        val req = makeRequest(worldInfoInput, profile, s)
         _state.update { it.copy(generating = true, error = null) }
         job = scope.launch {
             val acc = StringBuilder(prefix)

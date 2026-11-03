@@ -74,9 +74,9 @@ object PromptBuilder {
         ).map(::x).filter { it.isNotBlank() }.joinToString("\n\n")
 
         val fixedTokens = i.counter.count(vars.values.joinToString("\n") + examples.joinToString("\n") + post) + 64
-        val all = i.history.filterNot { it.isSystem }.map { m ->
+        val all = i.history.filter { it.inPrompt }.map { m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
-            PromptMessage(if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
+            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
         }
         val wiInj = PromptSupport.depthInjections(i.worldInfo)
         val wiTokens = wiInj.values.flatten().sumOf { i.counter.count(it.content) + 4 }

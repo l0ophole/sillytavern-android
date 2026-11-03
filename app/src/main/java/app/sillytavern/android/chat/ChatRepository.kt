@@ -56,6 +56,13 @@ class ChatRepository(private val paths: StoragePaths) {
         f.writeAtomic(text)
     }
 
+    /** Renames the chat file (extension kept, name sanitized); returns the new file, or the old one if the name is taken. */
+    fun rename(file: File, newBaseName: String): File {
+        val target = File(file.parentFile, StoragePaths.sanitizeFileName(newBaseName) + ".jsonl")
+        if (target == file || target.exists()) return file
+        return if (file.renameTo(target)) target else file
+    }
+
     fun delete(file: File) {
         file.delete()
     }

@@ -74,7 +74,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                 OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6)
                 Spacer(Modifier.width(8.dp))
                 if (state.generating) Button(onClick = { ctl.stop() }) { Text("Stop") }
-                else Button(enabled = input.isNotBlank(), onClick = { ctl.send(input); input = "" }) { Text("Send") }
+                else Button(enabled = input.isNotBlank(), onClick = { ctl.submit(input); input = "" }) { Text("Send") }
             }
         },
     ) { pad ->

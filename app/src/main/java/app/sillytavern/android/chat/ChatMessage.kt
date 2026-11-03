@@ -20,6 +20,20 @@ data class ChatMessage(
     fun withText(t: String): ChatMessage =
         copy(swipes = swipes.toMutableList().also { if (it.isEmpty()) it += t else it[swipeId.coerceIn(it.indices)] = t })
 
+    /** `/sys` narrator lines are system messages that still go into the prompt. */
+    val isNarrator: Boolean get() = extra["type"]?.jsonPrimitive?.contentOrNull == "narrator"
+    val isHidden: Boolean get() = extra["hidden"]?.jsonPrimitive?.booleanOrNull == true
+    /** Whether the message is sent to the model (hidden and plain system messages are not). */
+    val inPrompt: Boolean get() = (!isSystem || isNarrator) && !isHidden
+
+    fun withHidden(h: Boolean): ChatMessage {
+        val newExtra = buildJsonObject {
+            extra.forEach { (k, v) -> if (k != "hidden") put(k, v) }
+            if (h) put("hidden", true)
+        }
+        return copy(extra = newExtra, isSystem = if (isNarrator) true else h)
+    }
+
     /** Model reasoning/thinking for the current reply (SillyTavern keeps it in `extra.reasoning`). */
     val reasoning: String? get() = extra["reasoning"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
@@ -48,6 +62,10 @@ data class ChatMessage(
         private val known = setOf("name", "is_user", "is_system", "send_date", "mes", "swipes", "swipe_id", "swipe_info", "extra")
 
         fun user(name: String, text: String) = ChatMessage(name, isUser = true, swipes = listOf(text))
+        fun narrator(text: String, name: String = "System") = ChatMessage(
+            name, isUser = false, isSystem = true, swipes = listOf(text),
+            extra = buildJsonObject { put("type", "narrator") },
+        )
         fun assistant(name: String, text: String) = ChatMessage(name, isUser = false, swipes = listOf(text))
 
         fun fromJson(o: JsonObject): ChatMessage {

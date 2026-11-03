@@ -21,7 +21,7 @@ object WorldInfoRunner {
         if (entries.isEmpty()) return WorldInfoPrompt() to timed
         val ctx = PromptSupport.macroContext(input)
         val expand = { s: String -> Macros.expand(s, ctx) }
-        val chat = history.filterNot { it.isSystem }.asReversed()
+        val chat = history.filter { it.inPrompt }.asReversed()
             .map { if (settings.includeNames) "${it.name}: ${it.text}" else it.text }
         val card = input.card
         val depthPrompt = (((card.raw["extensions"] as? JsonObject)?.get("depth_prompt") as? JsonObject)?.get("prompt") as? JsonPrimitive)?.contentOrNull.orEmpty()
