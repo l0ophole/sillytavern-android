@@ -44,6 +44,8 @@ data class PromptInput(
     val regexScripts: List<app.sillytavern.android.regex.RegexScript> = emptyList(),
     /** Group chat: prefix each history message with its author's name (`Alice: text`). */
     val groupNames: Boolean = false,
+    /** Author's Note, summary and similar feature prompts. */
+    val extensionPrompts: List<ExtensionPrompt> = emptyList(),
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
@@ -64,7 +66,8 @@ object PromptBuilder {
             "personality" to if (i.card.personality.isBlank()) "" else x(pm.personalityFormat),
             "scenario" to if (i.card.scenario.isBlank()) "" else x(pm.scenarioFormat),
             "persona" to x(i.persona.description),
-            "wiBefore" to i.worldInfo.before, "wiAfter" to i.worldInfo.after, "anchorBefore" to "", "anchorAfter" to "",
+            "wiBefore" to i.worldInfo.before, "wiAfter" to i.worldInfo.after,
+            "anchorBefore" to PromptSupport.anchor(i, ExtensionPrompt.BEFORE_PROMPT, ::x), "anchorAfter" to PromptSupport.anchor(i, ExtensionPrompt.IN_PROMPT, ::x),
         )
         val examples = i.worldInfo.exampleTop +
             i.card.messageExample.takeIf { it.isNotBlank() }?.let { listOf("${x(pm.newExampleChatPrompt)}\n${x(it)}") }.orEmpty() +
@@ -84,7 +87,7 @@ object PromptBuilder {
             PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT,
                 PromptSupport.speaker(m, x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)), i, i.groupNames && instruct == null))
         }
-        val wiInj = PromptSupport.depthInjections(i.worldInfo)
+        val wiInj = PromptSupport.mergeInjections(PromptSupport.depthInjections(i.worldInfo), PromptSupport.inChat(i, ::x))
         val wiTokens = wiInj.values.flatten().sumOf { i.counter.count(it.content) + 4 }
         val kept = PromptSupport.injectAtDepth(
             PromptSupport.trimHistory(all, i.maxContextTokens - i.maxResponseTokens - fixedTokens - wiTokens, i.counter), wiInj,

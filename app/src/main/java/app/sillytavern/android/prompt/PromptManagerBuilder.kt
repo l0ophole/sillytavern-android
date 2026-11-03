@@ -22,6 +22,7 @@ internal object PromptSupport {
         maxPrompt = i.maxContextTokens, maxResponse = i.maxResponseTokens,
         chat = app.sillytavern.android.chat.ChatMacroView(i.history),
         vars = i.vars,
+        summary = app.sillytavern.android.chat.Summary.latest(i.history)?.second.orEmpty(),
     )
 
     /** [text] prefixed with the message author's name when [prefix] is on (group chats); narrator lines are left alone. */
@@ -39,6 +40,21 @@ internal object PromptSupport {
     /** World Info depth entries as (depth from end) -> messages. */
     fun depthInjections(wi: WorldInfoPrompt): Map<Int, List<PromptMessage>> = wi.depth.filter { it.content.isNotBlank() }
         .groupBy({ it.depth }, { PromptMessage(when (it.role) { 1 -> Role.USER; 2 -> Role.ASSISTANT; else -> Role.SYSTEM }, it.content) })
+
+    /** Extension prompts placed in the chat at their depth. */
+    fun inChat(i: PromptInput, x: (String) -> String): Map<Int, List<PromptMessage>> =
+        i.extensionPrompts.filter { it.position == ExtensionPrompt.IN_CHAT && it.content.isNotBlank() }
+            .mapNotNull { e -> x(e.content).takeIf { it.isNotBlank() }?.let { e.depth to PromptMessage(roleOf(e.role), it) } }
+            .groupBy({ it.first }, { it.second })
+
+    /** Extension prompts at the anchor [position] joined for the text-completion story string. */
+    fun anchor(i: PromptInput, position: Int, x: (String) -> String): String =
+        i.extensionPrompts.filter { it.position == position }.map { x(it.content) }.filter { it.isNotBlank() }.joinToString("\n")
+
+    fun roleOf(r: Int) = when (r) { 1 -> Role.USER; 2 -> Role.ASSISTANT; else -> Role.SYSTEM }
+
+    fun mergeInjections(a: Map<Int, List<PromptMessage>>, b: Map<Int, List<PromptMessage>>): Map<Int, List<PromptMessage>> =
+        (a.keys + b.keys).associateWith { a[it].orEmpty() + b[it].orEmpty() }
 
     /** Inserts [injections] (depth counted from the end; deeper than the chat lands first, 0 last). */
     fun injectAtDepth(kept: List<PromptMessage>, injections: Map<Int, List<PromptMessage>>): List<PromptMessage> = buildList {
@@ -94,7 +110,8 @@ object PromptManagerBuilder {
 
         val histIdx = active.indexOfFirst { it.identifier == "chatHistory" }
         val relative = active.withIndex().filter { (_, d) -> d.identifier == "chatHistory" || d.injectionPosition != 1 }
-        val pre = relative.filter { histIdx < 0 || it.index < histIdx }.mapNotNull { message(it.value) }
+        val preDefs = relative.filter { histIdx < 0 || it.index < histIdx }.map { it.value }
+        val pre = withExtensionAnchors(preDefs.mapNotNull { d -> message(d)?.let { d.identifier to it } }, i, defs["main"]?.role, ::x)
         val post = relative.filter { histIdx >= 0 && it.index > histIdx && it.value.identifier != "chatHistory" }
             .mapNotNull { message(it.value) }
         // Absolute injections: (depth from end, role) -> joined text, ordered by injection_order.
@@ -103,8 +120,7 @@ object PromptManagerBuilder {
             .mapNotNull { d -> message(d)?.let { d.injectionDepth to it } }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, ms) -> ms.groupBy { it.role }.map { (r, l) -> PromptMessage(r, l.joinToString("\n") { it.content }) } }
-            .let { base -> (base.keys + PromptSupport.depthInjections(i.worldInfo).keys).associateWith { d ->
-                base[d].orEmpty() + PromptSupport.depthInjections(i.worldInfo)[d].orEmpty() } }
+            .let { base -> PromptSupport.mergeInjections(PromptSupport.mergeInjections(base, PromptSupport.depthInjections(i.worldInfo)), PromptSupport.inChat(i, ::x)) }
 
         val nudge = when (i.mode) {
             GenerationMode.IMPERSONATE -> x(pm.impersonationPrompt)
@@ -129,6 +145,19 @@ object PromptManagerBuilder {
         val withInjections = PromptSupport.injectAtDepth(kept, injections)
         val result = pre + listOfNotNull(newChat) + withInjections + post + listOfNotNull(nudge)
         return if (pm.squashSystemMessages) squash(result) else result
+    }
+
+    /** BEFORE_PROMPT / IN_PROMPT extension prompts go right before / after the main prompt (front / back of [pre] when it is disabled). */
+    private fun withExtensionAnchors(pre: List<Pair<String, PromptMessage>>, i: PromptInput, mainRole: String?, x: (String) -> String): List<PromptMessage> {
+        fun ext(position: Int) = i.extensionPrompts.filter { it.position == position }
+            .mapNotNull { e -> x(e.content).takeIf { it.isNotBlank() }?.let { PromptMessage(if (mainRole != null) role(mainRole) else PromptSupport.roleOf(e.role), it) } }
+        val before = ext(ExtensionPrompt.BEFORE_PROMPT); val after = ext(ExtensionPrompt.IN_PROMPT)
+        if (before.isEmpty() && after.isEmpty()) return pre.map { it.second }
+        val mainAt = pre.indexOfFirst { it.first == "main" }
+        val out = pre.map { it.second }.toMutableList()
+        if (mainAt < 0) { out.addAll(0, before); out.addAll(after); return out }
+        out.addAll(mainAt + 1, after); out.addAll(mainAt, before)
+        return out
     }
 
     private fun wiFormat(text: String, pm: PromptManagerPreset) = if (text.isBlank()) "" else pm.wiFormat.replace("{0}", text)

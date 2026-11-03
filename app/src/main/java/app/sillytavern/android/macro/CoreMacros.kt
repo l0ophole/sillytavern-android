@@ -26,6 +26,7 @@ object CoreMacros {
         simple("personality") { it.ctx.personality }
         simple("scenario") { it.ctx.scenario }
         simple("persona") { it.ctx.persona }
+        simple("summary") { it.ctx.summary }
         MacroRegistry.register(MacroDef(listOf("newline"), 0, 1) { "\n".repeat(it.arg(0).trim().toIntOrNull()?.coerceIn(0, 100) ?: 1) })
         MacroRegistry.register(MacroDef(listOf("space"), 0, 1) { " ".repeat(it.arg(0).trim().toIntOrNull()?.coerceIn(0, 100) ?: 1) })
         simple("noop") { "" }

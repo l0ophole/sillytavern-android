@@ -11,6 +11,7 @@ import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.group.*
 import app.sillytavern.android.data.AppSettings
+import app.sillytavern.android.data.CharacterNote
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.command.*
 import app.sillytavern.android.macro.VariableStore
@@ -251,6 +252,7 @@ class ChatController(
                 description = c?.card?.description.orEmpty(), personality = c?.card?.personality.orEmpty(),
                 scenario = c?.card?.scenario.orEmpty(), persona = s.activePersona.description,
                 chat = ChatMacroView(messages), vars = variableStore(),
+                summary = Summary.latest(messages)?.second.orEmpty(),
             )
         }
         override suspend fun echo(text: String, severity: String) { _state.update { it.copy(notice = text) } }
@@ -319,6 +321,7 @@ class ChatController(
             maxContextTokens = profile.sampler.maxContextTokens, maxResponseTokens = profile.sampler.maxResponseTokens,
             counter = counterFor(profile.type), promptManager = s.activePromptManager,
             systemPrompt = if (profile.type.usesTextPrompt) s.activeSystemPrompt else null, vars = variableStore(), regexScripts = scripts(),
+            extensionPrompts = extensionPromptsFor(history, character),
         )
         val req = makeRequest(input, profile, s)
         val backend = backendFor(profile.type)
@@ -327,6 +330,48 @@ class ChatController(
         else backend.generate(req).map { Chunk.Text(it) }
         stream.collect { if (it is Chunk.Text) out.append(it.text) }
         return out.toString().trim()
+    }
+
+    // ---------------------------------------------------------------- author's note + summary
+
+    /** Prompts contributed by the Author's Note and the chat summary for a generation over [history]. */
+    private fun extensionPromptsFor(history: List<ChatMessage>, character: StoredCharacter?): List<ExtensionPrompt> {
+        val s = settings()
+        val persona = s.activePersona
+        val note = AuthorsNote.prompt(
+            AuthorsNote.config(chatMeta(), s.note), history,
+            // SillyTavern applies the character note to single-character chats only.
+            if (group == null) character?.let { s.characterNotes[it.fileName] } else null,
+            persona.description, persona.position,
+        )
+        return listOfNotNull(Summary.extensionPrompt(history, s.summary), note)
+    }
+
+    /** Author's Note of the open chat (chat metadata, with global defaults). */
+    fun noteConfig(): NoteConfig = AuthorsNote.config(chatMeta(), settings().note)
+
+    fun setNoteConfig(c: NoteConfig) {
+        val cur = chat ?: return
+        _state.update { it.copy(chat = AuthorsNote.withConfig(cur, c)) }
+        persist()
+    }
+
+    /** The open character's own note (single-character chats). */
+    fun characterNote(): CharacterNote? = _state.value.character?.fileName?.let { settings().characterNotes[it] }
+
+    fun setCharacterNote(n: CharacterNote) {
+        val f = _state.value.character?.fileName ?: return
+        updateSettings { st -> st.copy(characterNotes = if (n.prompt.isEmpty() && !n.useChara) st.characterNotes - f else st.characterNotes + (f to n)) }
+    }
+
+    /** Latest summary text of the open chat. */
+    fun summaryText(): String = Summary.latest(messages)?.second.orEmpty()
+
+    /** Edits the current summary in place (or puts a first one on the newest message); blank clears it. Older summaries stay. */
+    fun setSummary(text: String) {
+        if (messages.isEmpty()) return
+        val at = Summary.latest(messages)?.first ?: messages.lastIndex
+        mutate { l -> l.toMutableList().also { it[at] = Summary.withMemory(it[at], text) } }
     }
 
     private fun makeRequest(input: PromptInput, profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): GenerationRequest =
@@ -432,6 +477,7 @@ class ChatController(
             // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
             systemPrompt = if (textMode) s.activeSystemPrompt else null,
             vars = variableStore(), regexScripts = scripts(), groupNames = group != null,
+            extensionPrompts = extensionPromptsFor(history, character),
         )
         // Re-rolls of an existing reply must not advance sticky/cooldown timers.
         val dryRun = trigger != "normal"

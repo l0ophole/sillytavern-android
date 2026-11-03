@@ -53,6 +53,45 @@ data class Persona(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "User",
     val description: String = "",
+    /** File name inside `User Avatars/`, or empty. */
+    val avatar: String = "",
+    /** Description position: 0 in prompt, 2 top of Author's Note, 3 bottom of Author's Note, 4 at depth, 5 not sent. */
+    val position: Int = 0,
+    val depth: Int = 2,
+    val role: Int = 0,
+    val title: String = "",
+    /** Lorebook (world book name) attached to the persona. */
+    val lorebook: String = "",
+    /** Character file names this persona is locked to (SillyTavern persona connections). */
+    val characters: List<String> = emptyList(),
+)
+
+/** Defaults for new chats' Author's Note (SillyTavern `extension_settings.note`). */
+@Serializable
+data class NoteSettings(
+    val defaultPosition: Int = 1,
+    val defaultDepth: Int = 4,
+    val defaultInterval: Int = 1,
+    val defaultRole: Int = 0,
+)
+
+/** A character's own note; used when [useChara]. [position]: 0 replace, 1 before, 2 after the chat note. */
+@Serializable
+data class CharacterNote(val prompt: String = "", val useChara: Boolean = false, val position: Int = 0)
+
+/** Summarize extension settings (main-API source only). [position]: 0 in prompt, 1 in chat at [depth], 2 before prompt, -1 not injected. */
+@Serializable
+data class SummarySettings(
+    val prompt: String = app.sillytavern.android.chat.Summary.DEFAULT_PROMPT,
+    val template: String = app.sillytavern.android.chat.Summary.DEFAULT_TEMPLATE,
+    val position: Int = 0,
+    val role: Int = 0,
+    val depth: Int = 2,
+    val promptWords: Int = 200,
+    /** Summarize automatically after this many chat lines; only when [auto]. */
+    val interval: Int = 10,
+    val auto: Boolean = false,
+    val frozen: Boolean = false,
 )
 
 @Serializable
@@ -97,6 +136,11 @@ data class AppSettings(
     // --- Groups + tags (feature set 6) ---
     val tags: List<app.sillytavern.android.tags.Tag> = emptyList(),
     @kotlinx.serialization.SerialName("tag_map") val tagMap: Map<String, List<String>> = emptyMap(),
+    // --- Chat features (feature set 7) ---
+    val note: NoteSettings = NoteSettings(),
+    /** Character notes by character file name (SillyTavern `note.chara`). */
+    val characterNotes: Map<String, CharacterNote> = emptyMap(),
+    val summary: SummarySettings = SummarySettings(),
 ) {
     val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()

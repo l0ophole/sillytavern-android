@@ -35,6 +35,7 @@ data class MacroContext(
     val pickSeed: Int = 0,
     val chat: ChatMacroView? = null,
     val vars: app.sillytavern.android.macro.VariableStore? = null,
+    val summary: String = "",
     val instruct: app.sillytavern.android.prompt.model.InstructTemplate? = null,
     /** One-shot macros (`{{original}}`) record their use here. */
     val used: MutableSet<String> = mutableSetOf(),
