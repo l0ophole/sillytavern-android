@@ -13,11 +13,13 @@ class StoragePaths(val root: File) {
     val quickReplies = File(root, "QuickReplies")
     val groups = File(root, "groups")
     val groupChats = File(root, "group chats")
+    val backgrounds = File(root, "backgrounds")
+    val themes = File(root, "themes")
     val settingsFile = File(root, "settings.json")
     val secretsFile = File(root, "secrets.enc.json")
 
     fun ensure(): StoragePaths {
-        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats).forEach { it.mkdirs() }
+        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats, backgrounds, themes).forEach { it.mkdirs() }
         return this
     }
 

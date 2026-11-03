@@ -106,9 +106,9 @@ fun CharacterListScreen(
 
     Scaffold(
         topBar = {
-            if (selected.isEmpty()) TopAppBar(title = { Text("Characters") }, actions = {
-                TextButton(onClick = { importer.launch(arrayOf("image/png", "application/json", "*/*")) }) { Text("Import") }
-                TextButton(onClick = onSettings) { Text("Settings") }
+            if (selected.isEmpty()) TopAppBar(title = { Text(tr("Characters")) }, actions = {
+                TextButton(onClick = { importer.launch(arrayOf("image/png", "application/json", "*/*")) }) { Text(tr("Import")) }
+                TextButton(onClick = onSettings) { Text(tr("Settings")) }
             }) else TopAppBar(
                 title = { Text("${selected.size} selected") },
                 navigationIcon = { TextButton(onClick = { selected = emptySet() }) { Text("✕") } },

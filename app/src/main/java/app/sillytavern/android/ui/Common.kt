@@ -26,6 +26,6 @@ fun Field(
 fun BackTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) =
     TopAppBar(
         title = { Text(title, maxLines = 1) },
-        navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
+        navigationIcon = { TextButton(onClick = onBack) { Text(tr("‹ Back")) } },
         actions = actions,
     )

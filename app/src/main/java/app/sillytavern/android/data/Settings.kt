@@ -145,6 +145,8 @@ data class AppSettings(
     /** Character notes by character file name (SillyTavern `note.chara`). */
     val characterNotes: Map<String, CharacterNote> = emptyMap(),
     val summary: SummarySettings = SummarySettings(),
+    // --- Appearance (feature set 8) ---
+    val appearance: app.sillytavern.android.appearance.AppearanceSettings = app.sillytavern.android.appearance.AppearanceSettings(),
 ) {
     val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()

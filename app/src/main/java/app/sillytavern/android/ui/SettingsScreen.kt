@@ -19,14 +19,15 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit, onTags: () -> Unit = {}) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit, onTags: () -> Unit = {}, onAppearance: () -> Unit = {}) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
 
-    Scaffold(topBar = { BackTopBar("Settings", onBack) }) { pad ->
+    Scaffold(topBar = { BackTopBar(tr("Settings"), onBack) }) { pad ->
         Column(Modifier.padding(pad).padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
-            SectionHeader("Connections") { editConn = ConnectionProfile() }
+            TextButton(onClick = onAppearance) { Text(tr("Appearance & language")) }
+            SectionHeader(tr("Connections")) { editConn = ConnectionProfile() }
             if (s.connections.isEmpty()) Text("No connections. Tap Add to configure an API.", Modifier.padding(vertical = 8.dp))
             s.connections.forEach { p ->
                 ItemRow(p.name, "${p.type.name.lowercase().replace('_', ' ')} · ${p.model.ifBlank { "no model" }}",
@@ -36,7 +37,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
                     onDelete = { c.secrets.remove("key:${p.id}"); c.settings.update { it.copy(connections = it.connections - p) } })
             }
             Spacer(Modifier.height(16.dp))
-            SectionHeader("Personas") { editPersona = Persona(name = "") }
+            SectionHeader(tr("Personas")) { editPersona = Persona(name = "") }
             s.personas.forEach { p ->
                 ItemRow(p.name + if (p.id == s.defaultPersonaId) "  ★" else "", p.title.ifBlank { p.description.take(60) }, p.id == s.activePersona.id,
                     onSelect = { c.chatController.selectPersona(p.id) },
@@ -47,7 +48,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
                     leading = { PersonaAvatar(c, p, 36) })
             }
             Spacer(Modifier.height(16.dp))
-            Text("Prompts", style = MaterialTheme.typography.titleLarge)
+            Text(tr("Prompts"), style = MaterialTheme.typography.titleLarge)
             Row {
                 TextButton(onClick = onPromptManager) { Text("Prompt Manager (${s.activePromptManager.name})") }
             }
@@ -86,7 +87,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
 private fun SectionHeader(title: String, onAdd: () -> Unit) =
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(title, style = MaterialTheme.typography.titleLarge)
-        TextButton(onClick = onAdd) { Text("Add") }
+        TextButton(onClick = onAdd) { Text(tr("Add")) }
     }
 
 @Composable
@@ -99,8 +100,8 @@ private fun ItemRow(title: String, subtitle: String, selected: Boolean, onSelect
             Text(title, style = MaterialTheme.typography.titleMedium)
             if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(onClick = onEdit) { Text("Edit") }
-        if (onDelete != null) TextButton(onClick = onDelete) { Text("Delete") }
+        TextButton(onClick = onEdit) { Text(tr("Edit")) }
+        if (onDelete != null) TextButton(onClick = onDelete) { Text(tr("Delete")) }
     }
 
 @OptIn(ExperimentalMaterial3Api::class)

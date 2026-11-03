@@ -174,3 +174,24 @@ See docs/ROADMAP.md.
 - Import formats are checked against hand-written samples taken from ST's converters, not real exports; RisuAI chats and Chub-specific metadata are not imported
 - No live model call for summaries (fake backend only); `{{words}}` is advisory, there is no word-limit forcing
 - Not implemented: Extras/WebLLM summary sources, raw/non-blocking summary builders, persona avatar in message bubbles (set 8), persona import/export, Author's Note WI scanning, auto-summary while the chat screen is closed
+
+
+## Done (feature set 8: appearance) — plan: docs/plans/07-appearance.md
+- Markdown (`appearance/Markdown.kt`, `ui/MarkdownText.kt`): showdown-like blocks (headings, quotes, bullet/numbered lists, fenced code, rules, image lines) and inline (`**bold**`, `*italic*`, `_italic_`, `~~strike~~`, `` `code` ``, links, `"quotes"` as a colored run, backslash escapes); single newlines stay line breaks. Inline HTML limited to `b/strong/i/em/u/ins/s/del/strike/code/q/br/a`; `script/style/iframe/object/embed` are dropped with their content, other tags are stripped and the content kept; with "Allow basic HTML tags" off tags show as text. Links open only for http(s), mailto, tel
+- Themes (`appearance/Appearance.kt`, `ThemeIo.kt`, `ui/AppTheme.kt`): system/light/dark/AMOLED, color overrides (text, action/italics, quote, underline, app/chat background, user/character message), font scale; import/export of SillyTavern theme files (ST keys, `rgba()`/hex colors, light/dark inferred from `blur_tint_color`), reset
+- Chat look: message style flat/bubbles/document, avatar style round/portrait/square/rounded (ST `avatar_style`), character and persona avatars in messages (group chats use `original_avatar`), timestamps, message numbers, hide avatars, background image with dim (`backgrounds/` folder, add/select/delete in the Appearance screen)
+- Tablet: screens under 600dp use the full width; wider ones center the chat column at `chatWidth`% (ST `chat_width`, min 560dp), input bar included
+- i18n (`appearance/Translator.kt`, `assets/locales/{es,fr,de}.json`): ST-style English-text keys, English fallback. Applied to the chat screen and its menus, settings entry points, character list top bar, Appearance screen
+- Verification: 639 JVM unit tests pass (65 new: markdown, theme io, translator + locale files, background repo), lint 0 errors, debug APK builds
+
+## Rulings / deviations (set 8)
+- Executed on `main`, native, no subagents; UI tasks compile + lint only
+- "Moving UI" (draggable panels) not built: no meaning on a phone. ST's custom CSS box, blur/shadow sliders, reduced motion and zen/lab modes are not built
+- Only the main screens are translated (not prompt manager, world info, regex, quick replies, tags, group editor, dialogs); es/fr/de strings were written by the assistant, not by native speakers
+- No separate list-detail layout on tablets, only the width-capped column
+- Imported ST themes keep the app's language, background, and markdown/HTML switches; the theme name is kept only as a label
+
+## Not verified (set 8)
+- Nothing run on a device/emulator: bubble layouts, avatar shapes, background dimming, AMOLED colors, the color text fields, markdown rendering of long streamed messages (re-parsed on every token), link taps
+- Themes checked against hand-written samples shaped like ST's `Dark Lite.json`, not against all bundled themes
+- Not implemented: `/bg` command, per-character backgrounds, locked backgrounds per chat, message-level `<style>`/tables/iframes, RTL layout testing, reasoning text is shown as plain text (not markdown)

@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import app.sillytavern.android.AppContainer
 import app.sillytavern.android.chat.ChatMessage
 import app.sillytavern.android.quickreply.QuickReplyService
@@ -60,31 +62,42 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); ctl.clearError() } }
     LaunchedEffect(state.notice) { state.notice?.let { snackbar.showSnackbar(it); ctl.clearNotice() } }
 
+    val look = LocalAppearance.current
+    val chatColors = LocalChatColors.current
+    val screenDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val columnDp = app.sillytavern.android.appearance.AppearanceSettings.chatColumnDp(screenDp, look.chatWidth).dp
+    val bgFile = remember(look.background) { c.backgrounds.file(look.background) }
+    Box(Modifier.fillMaxSize()) {
+    if (bgFile != null) {
+        coil.compose.AsyncImage(bgFile, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = look.backgroundDim.coerceIn(0f, 0.9f))))
+    }
     Scaffold(
+        containerColor = if (bgFile != null) androidx.compose.ui.graphics.Color.Transparent else chatColors.chatBackground ?: MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(state.group?.name ?: state.character?.card?.name ?: "") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
+                navigationIcon = { TextButton(onClick = onBack) { Text(tr("‹ Back")) } },
                 actions = {
                     Box {
                         TextButton(onClick = { menu = true }) { Text("⋮") }
                         DropdownMenu(menu, { menu = false }) {
-                            DropdownMenuItem({ Text("New chat") }, { menu = false; ctl.newChat() })
-                            DropdownMenuItem({ Text("Chats…") }, { menu = false; showChats = true })
-                            if (ctl.mainChatName() != null) DropdownMenuItem({ Text("Back to main chat") }, { menu = false; ctl.backToMain() })
-                            DropdownMenuItem({ Text("Regenerate") }, { menu = false; ctl.regenerate() })
-                            DropdownMenuItem({ Text("Continue") }, { menu = false; ctl.continueLast() })
-                            DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
-                            DropdownMenuItem({ Text("Author's Note…") }, { menu = false; showNote = true })
-                            DropdownMenuItem({ Text("Summary…") }, { menu = false; showSummary = true })
-                            DropdownMenuItem({ Text("Persona… (${appSettings.activePersona.name})") }, { menu = false; showPersona = true })
-                            DropdownMenuItem({ Text("Chat lorebook…") }, { menu = false; showBook = true })
-                            DropdownMenuItem({ Text("Chat quick reply set…") }, { menu = false; showQrSet = true })
+                            DropdownMenuItem({ Text(tr("New chat")) }, { menu = false; ctl.newChat() })
+                            DropdownMenuItem({ Text(tr("Chats…")) }, { menu = false; showChats = true })
+                            if (ctl.mainChatName() != null) DropdownMenuItem({ Text(tr("Back to main chat")) }, { menu = false; ctl.backToMain() })
+                            DropdownMenuItem({ Text(tr("Regenerate")) }, { menu = false; ctl.regenerate() })
+                            DropdownMenuItem({ Text(tr("Continue")) }, { menu = false; ctl.continueLast() })
+                            DropdownMenuItem({ Text(tr("Impersonate")) }, { menu = false; ctl.impersonate() })
+                            DropdownMenuItem({ Text(tr("Author's Note…")) }, { menu = false; showNote = true })
+                            DropdownMenuItem({ Text(tr("Summary…")) }, { menu = false; showSummary = true })
+                            DropdownMenuItem({ Text(tr("Persona…") + " (${appSettings.activePersona.name})") }, { menu = false; showPersona = true })
+                            DropdownMenuItem({ Text(tr("Chat lorebook…")) }, { menu = false; showBook = true })
+                            DropdownMenuItem({ Text(tr("Chat quick reply set…")) }, { menu = false; showQrSet = true })
                             val grp = state.group
                             if (grp != null) {
-                                DropdownMenuItem({ Text(if (state.autoMode) "Auto mode: turn off" else "Auto mode: turn on") }, { menu = false; ctl.setAutoMode(!state.autoMode) })
-                                DropdownMenuItem({ Text("Edit group") }, { menu = false; onEditGroup(grp.id) })
-                            } else DropdownMenuItem({ Text("Edit character") }, { menu = false; onEdit(characterFile) })
+                                DropdownMenuItem({ Text(tr(if (state.autoMode) "Auto mode: turn off" else "Auto mode: turn on")) }, { menu = false; ctl.setAutoMode(!state.autoMode) })
+                                DropdownMenuItem({ Text(tr("Edit group")) }, { menu = false; onEditGroup(grp.id) })
+                            } else DropdownMenuItem({ Text(tr("Edit character")) }, { menu = false; onEdit(characterFile) })
                         }
                     }
                 },
@@ -92,7 +105,8 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-          Column {
+          Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+          Column(Modifier.widthIn(max = columnDp)) {
             if (bar.isNotEmpty()) androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(bar.size) { idx ->
                     val (set, qr) = bar[idx]
@@ -108,46 +122,59 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             }
             state.group?.let { g -> MemberStrip(g, state.members, state.generating, state.groupQueue, onSpeak = ctl::speak, onMute = ctl::muteMember) }
             Row(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-                OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6)
+                OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text(tr("Message")) }, maxLines = 6)
                 Spacer(Modifier.width(8.dp))
-                if (state.generating) Button(onClick = { ctl.stop() }) { Text("Stop") }
-                else Button(enabled = input.isNotBlank(), onClick = { ctl.submit(input); input = "" }) { Text("Send") }
+                if (state.generating) Button(onClick = { ctl.stop() }) { Text(tr("Stop")) }
+                else Button(enabled = input.isNotBlank(), onClick = { ctl.submit(input); input = "" }) { Text(tr("Send")) }
             }
+          }
           }
         },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 12.dp), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(Modifier.widthIn(max = columnDp).fillMaxSize().padding(horizontal = 12.dp), state = listState, verticalArrangement = Arrangement.spacedBy(if (look.messageStyle == app.sillytavern.android.appearance.MessageStyle.DOCUMENT) 14.dp else 8.dp)) {
             itemsIndexed(messages) { i, m ->
                 val shown = remember(m.text, m.isUser, appSettings.regexEnabled, state.character) { ctl.displayText(m) }
                 val shownReasoning = remember(m.reasoning, appSettings.regexEnabled, state.character) { m.reasoning?.let(ctl::displayReasoning) }
+                val avatar = remember(m.name, m.isUser, m.originalAvatar, state.character, state.group, appSettings.personas, appSettings.activePersonaId) {
+                    when {
+                        m.isSystem -> null
+                        m.isUser -> (appSettings.personas.firstOrNull { it.name == m.name } ?: appSettings.activePersona).avatar
+                            .takeIf { it.isNotBlank() }?.let { File(c.paths.userAvatars, it) }
+                        state.group != null -> m.originalAvatar?.let { File(c.paths.characters, it) }
+                        else -> state.character?.file
+                    }?.takeIf { it.exists() }
+                }
                 MessageBubble(
-                    m, shown = shown, shownReasoning = shownReasoning, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
+                    m, index = i, avatar = avatar, look = look, colors = chatColors, shown = shown, shownReasoning = shownReasoning, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
                     onLongPress = { actionsFor = i }, onSwipe = { d -> ctl.swipe(i, d) },
                     onOpenCheckpoint = { ctl.openCheckpoint(i) },
                 )
             }
         }
+        }
+    }
     }
 
     actionsFor?.let { i ->
         AlertDialog(
             onDismissRequest = { actionsFor = null },
-            title = { Text("Message") },
+            title = { Text(tr("Message")) },
             text = {
                 Column {
-                    TextButton(onClick = { editing = i; actionsFor = null }) { Text("Edit") }
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(messages[i].text)); actionsFor = null }) { Text("Copy") }
+                    TextButton(onClick = { editing = i; actionsFor = null }) { Text(tr("Edit")) }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(messages[i].text)); actionsFor = null }) { Text(tr("Copy")) }
                     TextButton(onClick = { ctl.setHidden(i, !messages[i].isHidden); actionsFor = null }) {
-                        Text(if (messages[i].isHidden) "Unhide (include in prompt)" else "Hide (exclude from prompt)")
+                        Text(tr(if (messages[i].isHidden) "Unhide (include in prompt)" else "Hide (exclude from prompt)"))
                     }
-                    TextButton(onClick = { ctl.createBranch(i, messages[i].swipeId.takeIf { messages[i].swipes.size > 1 }); actionsFor = null }) { Text("Branch from here") }
-                    TextButton(onClick = { checkpointFor = i; actionsFor = null }) { Text(if (messages[i].bookmarkLink != null) "Replace checkpoint…" else "Create checkpoint…") }
-                    if (messages[i].bookmarkLink != null) TextButton(onClick = { ctl.openCheckpoint(i); actionsFor = null }) { Text("Open checkpoint") }
-                    TextButton(onClick = { ctl.delete(i); actionsFor = null }) { Text("Delete") }
+                    TextButton(onClick = { ctl.createBranch(i, messages[i].swipeId.takeIf { messages[i].swipes.size > 1 }); actionsFor = null }) { Text(tr("Branch from here")) }
+                    TextButton(onClick = { checkpointFor = i; actionsFor = null }) { Text(tr(if (messages[i].bookmarkLink != null) "Replace checkpoint…" else "Create checkpoint…")) }
+                    if (messages[i].bookmarkLink != null) TextButton(onClick = { ctl.openCheckpoint(i); actionsFor = null }) { Text(tr("Open checkpoint")) }
+                    TextButton(onClick = { ctl.delete(i); actionsFor = null }) { Text(tr("Delete")) }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { actionsFor = null }) { Text("Close") } },
+            dismissButton = { TextButton(onClick = { actionsFor = null }) { Text(tr("Close")) } },
         )
     }
     checkpointFor?.let { i ->
@@ -156,7 +183,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             onDismissRequest = { checkpointFor = null }, title = { Text("Create checkpoint") },
             text = { Field("Name (empty = automatic)", name, { name = it }) },
             confirmButton = { TextButton(onClick = { ctl.createCheckpoint(i, name.ifBlank { null }); checkpointFor = null }) { Text("Create") } },
-            dismissButton = { TextButton(onClick = { checkpointFor = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { checkpointFor = null }) { Text(tr("Cancel")) } },
         )
     }
     editing?.let { i ->
@@ -165,8 +192,8 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             onDismissRequest = { editing = null },
             title = { Text("Edit message") },
             text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3) },
-            confirmButton = { TextButton(onClick = { ctl.edit(i, text); editing = null }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { ctl.edit(i, text); editing = null }) { Text(tr("Save")) } },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text(tr("Cancel")) } },
         )
     }
     if (showQrSet) {
@@ -175,7 +202,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         AlertDialog(onDismissRequest = { showQrSet = false }, title = { Text("Quick reply set for this chat") },
             text = { Pick("Set", listOf("(none)") + names, if (sel == null) 0 else names.indexOf(sel) + 1) { sel = if (it == 0) null else names[it - 1] } },
             confirmButton = { TextButton(onClick = { ctl.setChatQuickReplySet(sel); showQrSet = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { showQrSet = false }) { Text("Cancel") } })
+            dismissButton = { TextButton(onClick = { showQrSet = false }) { Text(tr("Cancel")) } })
     }
     if (showNote) AuthorsNoteDialog(c) { showNote = false }
     if (showSummary) SummaryDialog(c) { showSummary = false }
@@ -187,36 +214,64 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         AlertDialog(
             onDismissRequest = { showBook = false }, title = { Text("Lorebook for this chat") },
             text = { Pick("Book", listOf("(none)") + names, if (current == null) 0 else names.indexOf(current) + 1) { ctl.setChatBook(if (it == 0) null else names[it - 1]); showBook = false } },
-            confirmButton = { TextButton(onClick = { showBook = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { showBook = false }) { Text(tr("Close")) } },
         )
     }
 }
 
+@Composable
+private fun AvatarImage(file: File?, name: String, style: app.sillytavern.android.appearance.AvatarStyle) {
+    val shape = when (style) {
+        app.sillytavern.android.appearance.AvatarStyle.ROUND -> androidx.compose.foundation.shape.CircleShape
+        app.sillytavern.android.appearance.AvatarStyle.RECTANGULAR -> RoundedCornerShape(4.dp)
+        app.sillytavern.android.appearance.AvatarStyle.SQUARE -> RoundedCornerShape(2.dp)
+        app.sillytavern.android.appearance.AvatarStyle.ROUNDED -> RoundedCornerShape(10.dp)
+    }
+    val mod = if (style == app.sillytavern.android.appearance.AvatarStyle.RECTANGULAR) Modifier.size(36.dp, 54.dp) else Modifier.size(40.dp)
+    if (file != null) coil.compose.AsyncImage(file, name, mod.clip(shape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+    else Surface(mod, shape = shape, color = MaterialTheme.colorScheme.secondaryContainer) { Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase()) } }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit, onOpenCheckpoint: () -> Unit) {
-    val color = when { m.isNarrator -> MaterialTheme.colorScheme.tertiaryContainer; m.isUser -> MaterialTheme.colorScheme.primaryContainer; else -> MaterialTheme.colorScheme.surfaceVariant }
-    Column(
-        Modifier.fillMaxWidth().background(color, RoundedCornerShape(12.dp))
-            .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(m.name, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-            m.bookmarkLink?.let { TextButton(onClick = onOpenCheckpoint, contentPadding = PaddingValues(0.dp)) { Text("⚑ ${it.take(24)}", style = MaterialTheme.typography.labelSmall, maxLines = 1) } }
-        }
-        shownReasoning?.let { r ->
-            var open by remember(m.sendDate) { mutableStateOf(false) }
-            TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {
-                Text(if (open) "▾ Thinking" else "▸ Thinking…", style = MaterialTheme.typography.labelMedium)
-            }
-            if (open) Text(r, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-        }
-        Text(if (m.text.isEmpty() && generating) "…" else shown + if (m.isHidden) "  (hidden)" else "", style = MaterialTheme.typography.bodyLarge)
-        if (isLast && !m.isUser && (m.swipes.size > 1 || !generating)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(enabled = m.swipeId > 0 && !generating, onClick = { onSwipe(-1) }) { Text("◀") }
-                Text("${m.swipeId + 1}/${m.swipes.size}", style = MaterialTheme.typography.labelSmall)
-                TextButton(enabled = !generating, onClick = { onSwipe(1) }) { Text("▶") }
+private fun MessageBubble(
+    m: ChatMessage, index: Int, avatar: File?, look: app.sillytavern.android.appearance.AppearanceSettings, colors: ChatColors,
+    shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit, onOpenCheckpoint: () -> Unit,
+) {
+    val style = look.messageStyle
+    val color = when { m.isNarrator -> colors.narrator; m.isUser -> colors.user; else -> colors.bot }
+    val document = style == app.sillytavern.android.appearance.MessageStyle.DOCUMENT
+    val bubbles = style == app.sillytavern.android.appearance.MessageStyle.BUBBLES
+    val showAvatar = !look.hideAvatars && !document && !m.isSystem
+    val container = if (document) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(if (bubbles) 0.94f else 1f).background(color, RoundedCornerShape(if (bubbles) 14.dp else 6.dp))
+    Box(Modifier.fillMaxWidth(), contentAlignment = if (bubbles && m.isUser) Alignment.CenterEnd else Alignment.CenterStart) {
+        Row(container.combinedClickable(onClick = {}, onLongClick = onLongPress).padding(if (document) 0.dp else 10.dp)) {
+            if (showAvatar) { AvatarImage(avatar, m.name, look.avatarStyle); Spacer(Modifier.width(10.dp)) }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(m.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.text, modifier = Modifier.weight(1f, fill = false))
+                    if (look.showMessageNumbers) Text("  #$index", style = MaterialTheme.typography.labelSmall, color = colors.italics)
+                    if (look.showTimestamps) Text("  " + app.sillytavern.android.appearance.SendDate.format(m.sendDate), style = MaterialTheme.typography.labelSmall, color = colors.italics)
+                    Spacer(Modifier.weight(1f))
+                    m.bookmarkLink?.let { TextButton(onClick = onOpenCheckpoint, contentPadding = PaddingValues(0.dp)) { Text("⚑ ${it.take(24)}", style = MaterialTheme.typography.labelSmall, maxLines = 1) } }
+                }
+                shownReasoning?.let { r ->
+                    var open by remember(m.sendDate) { mutableStateOf(false) }
+                    TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {
+                        Text(if (open) "▾ " + tr("Thinking") else "▸ " + tr("Thinking") + "…", style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (open) Text(r, style = MaterialTheme.typography.bodySmall, color = colors.italics, modifier = Modifier.padding(bottom = 6.dp))
+                }
+                if (m.text.isEmpty() && generating) Text("…", color = colors.text)
+                else MarkdownText(shown + if (m.isHidden) "  (" + tr("hidden") + ")" else "", render = look.renderMarkdown, allowHtml = look.allowHtml)
+                if (document) HorizontalDivider(Modifier.padding(top = 10.dp), color = colors.italics.copy(alpha = 0.25f))
+                if (isLast && !m.isUser && (m.swipes.size > 1 || !generating)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(enabled = m.swipeId > 0 && !generating, onClick = { onSwipe(-1) }) { Text("◀") }
+                        Text("${m.swipeId + 1}/${m.swipes.size}", style = MaterialTheme.typography.labelSmall, color = colors.text)
+                        TextButton(enabled = !generating, onClick = { onSwipe(1) }) { Text("▶") }
+                    }
+                }
             }
         }
     }
@@ -267,7 +322,7 @@ private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
                                 DropdownMenu(rowMenu, { rowMenu = false }) {
                                     DropdownMenuItem({ Text("Export as JSONL") }, { rowMenu = false; pendingExport = f to false; exporter.launch(f.nameWithoutExtension + ".jsonl") })
                                     DropdownMenuItem({ Text("Export as text") }, { rowMenu = false; pendingExport = f to true; exporter.launch(f.nameWithoutExtension + ".txt") })
-                                    DropdownMenuItem({ Text("Delete") }, { rowMenu = false; ctl.deleteChatFile(f); files = ctl.chatFiles() })
+                                    DropdownMenuItem({ Text(tr("Delete")) }, { rowMenu = false; ctl.deleteChatFile(f); files = ctl.chatFiles() })
                                 }
                             }
                         }
@@ -275,7 +330,7 @@ private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
         dismissButton = { TextButton(onClick = { importer.launch(arrayOf("*/*")) }) { Text("Import…") } },
     )
 }

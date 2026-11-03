@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -17,16 +19,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val c = (application as SillyTavernApp).container
-        setContent { SillyTheme { AppNav(c) } }
+        setContent {
+            val s by c.settings.settings.collectAsState()
+            SillyTheme(s.appearance, rememberTranslator(s.appearance.language)) { AppNav(c) }
+        }
     }
-}
-
-@Composable
-fun SillyTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-        content = content,
-    )
 }
 
 @Composable
@@ -61,8 +58,9 @@ private fun AppNav(c: AppContainer) {
                 onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") },
                 onWorlds = { nav.navigate("worlds") },
                 onQuickReplies = { nav.navigate("quickreplies") }, onRegex = { nav.navigate("regex") },
-                onTags = { nav.navigate("tags") })
+                onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") })
         }
+        composable("appearance") { AppearanceScreen(c, onBack = { nav.popBackStack() }) }
         composable("promptmanager") { PromptManagerScreen(c, onBack = { nav.popBackStack() }) }
         composable("worlds") { WorldInfoScreen(c, onOpenBook = { nav.navigate("worlds/${android.net.Uri.encode(it)}") }, onBack = { nav.popBackStack() }) }
         composable("worlds/{name}", listOf(navArgument("name") { type = NavType.StringType })) {

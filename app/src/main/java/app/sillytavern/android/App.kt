@@ -1,5 +1,6 @@
 package app.sillytavern.android
 
+import app.sillytavern.android.appearance.BackgroundRepository
 import app.sillytavern.android.regex.RegexRepository
 import app.sillytavern.android.quickreply.QuickReplyRepository
 import app.sillytavern.android.quickreply.QuickReplyService
@@ -28,6 +29,7 @@ class AppContainer(app: Application) {
     val worlds = WorldBookRepository(paths)
     val regexScripts = RegexRepository(paths)
     val quickReplyRepo = QuickReplyRepository(paths)
+    val backgrounds = BackgroundRepository(paths)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
