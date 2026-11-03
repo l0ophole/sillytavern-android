@@ -153,6 +153,8 @@ data class AppSettings(
     val memory: app.sillytavern.android.memory.MemorySettings = app.sillytavern.android.memory.MemorySettings(),
     // --- Utilities (feature set 11) ---
     val tools: app.sillytavern.android.tools.ToolsSettings = app.sillytavern.android.tools.ToolsSettings(),
+    // --- Extensions (feature set 12) ---
+    val extensions: app.sillytavern.android.extensions.ExtensionSettings = app.sillytavern.android.extensions.ExtensionSettings(),
 ) {
     val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()

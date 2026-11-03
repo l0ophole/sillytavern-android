@@ -21,11 +21,13 @@ class StoragePaths(val root: File) {
     val vectors = File(root, "user/vectors")
     val dataBank = File(root, "user/data-bank")
     val sprites = File(root, "user/sprites")
+    /** Third-party QuickJS extensions (set 12), one folder per id. */
+    val extensions = File(root, "extensions")
     val settingsFile = File(root, "settings.json")
     val secretsFile = File(root, "secrets.enc.json")
 
     fun ensure(): StoragePaths {
-        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats, backgrounds, themes, userImages, vectors, dataBank, sprites).forEach { it.mkdirs() }
+        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir, quickReplies, groups, groupChats, backgrounds, themes, userImages, vectors, dataBank, sprites, extensions).forEach { it.mkdirs() }
         return this
     }
 
