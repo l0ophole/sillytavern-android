@@ -42,7 +42,7 @@ class CoreMacrosTest {
     @Test fun timeDiffHumanized() = assertEquals("2 hours ago", x("{{timeDiff::2026-11-02 16:31:05::2026-11-02 18:31:05}}"))
     @Test fun idleDuration() {
         assertEquals("just now", x("{{idleDuration}}"))
-        val c = ctx.copy(idleSince = Instant.now().minusSeconds(3 * 3600 + 5))
+        val c = ctx.copy(idleSince = ctx.now.atZone(ctx.zone).toInstant().minusSeconds(3 * 3600 + 5))
         assertEquals("3 hours", x("{{idleDuration}}", c))
     }
     @Test fun maxContextAlias() = assertEquals("4096 4096 300 300", x("{{maxPrompt}} {{maxPromptTokens}} {{maxResponse}} {{maxResponseTokens}}"))
