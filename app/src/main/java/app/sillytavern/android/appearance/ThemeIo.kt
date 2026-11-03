@@ -44,6 +44,12 @@ object ThemeIo {
      * Applies a theme file onto [base]. Dark/light mode follows the brightness of `blur_tint_color`.
      * Throws [IllegalArgumentException] when the text is not a theme object.
      */
+    /** Settings after applying an imported theme: the theme's look, but the user's language, background and rendering choices stay. */
+    fun applied(current: AppearanceSettings, imported: AppearanceSettings) = imported.copy(
+        language = current.language, background = current.background, backgroundDim = current.backgroundDim,
+        renderMarkdown = current.renderMarkdown, allowHtml = current.allowHtml,
+    )
+
     fun import(text: String, base: AppearanceSettings = AppearanceSettings()): AppearanceSettings {
         val o = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull() ?: throw IllegalArgumentException("Not a theme file")
         fun color(k: String) = parseColor((o[k] as? JsonPrimitive)?.contentOrNull)

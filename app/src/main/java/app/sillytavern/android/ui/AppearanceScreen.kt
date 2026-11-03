@@ -32,7 +32,7 @@ fun AppearanceScreen(c: AppContainer, onBack: () -> Unit) {
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) } }
             .mapCatching { ThemeIo.import(it, c.settings.settings.value.appearance) }
-            .onSuccess { n -> c.settings.update { it.copy(appearance = n.copy(language = it.appearance.language, background = it.appearance.background, backgroundDim = it.appearance.backgroundDim, renderMarkdown = it.appearance.renderMarkdown, allowHtml = it.appearance.allowHtml)) }; message = "Theme \"${n.themeName}\" applied" }
+            .onSuccess { n -> c.settings.update { it.copy(appearance = ThemeIo.applied(it.appearance, n)) }; message = "Theme \"${n.themeName}\" applied" }
             .onFailure { message = "Import failed: ${it.message}" }
     }
     val themeExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->

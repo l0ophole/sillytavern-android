@@ -47,6 +47,8 @@ class AppContainer(app: Application) {
     )
     val sprites = SpriteRepository(paths.sprites)
     val translator = TextTranslator({ settings.settings.value.tools.translate }, { secrets.get(ToolsSettings.KEY_TRANSLATE) })
+    val assetInstaller by lazy { AssetInstaller(paths, characters, worlds, backgrounds) }
+    val defaultContent by lazy { DefaultContent({ p -> app.assets.open(p).use { it.readBytes() } }, assetInstaller, characters, worlds) }
     val webSearch = WebSearchService({ settings.settings.value.tools.search }, { secrets.get(ToolsSettings.KEY_SEARCH) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
