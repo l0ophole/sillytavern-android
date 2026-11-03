@@ -45,6 +45,8 @@ interface CommandHost {
     suspend fun setChatBook(name: String?): Unit = unavailable()
     suspend fun switchPersona(name: String): Boolean = unavailable()
     suspend fun summarize(text: String?): String = unavailable()
+    /** Captions the image of a message (default: the newest with an image) and returns the caption. */
+    suspend fun caption(mesId: Int?, prompt: String?): String = unavailable()
     fun currentSummary(): String = ""
     suspend fun createBranch(mesId: Int): String? = unavailable()
     suspend fun createCheckpoint(mesId: Int, name: String?): String? = unavailable()

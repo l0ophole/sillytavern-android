@@ -25,6 +25,7 @@ open class ChatFeaturesTestBase {
         ChatRepository(paths), { backend }, { cfg }, { "key" }, this,
         worlds = app.sillytavern.android.worldinfo.WorldBookRepository(paths),
         updateSettings = { f -> cfg = f(cfg) },
+        mediaRoot = paths.root,
     )
 
     fun lastContents() = requests.last().messages.map { it.content }

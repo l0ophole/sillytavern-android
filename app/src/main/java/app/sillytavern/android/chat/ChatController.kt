@@ -20,6 +20,7 @@ import app.sillytavern.android.quickreply.QuickReplyService
 import app.sillytavern.android.regex.*
 import kotlinx.serialization.json.JsonObject
 import app.sillytavern.android.prompt.*
+import app.sillytavern.android.media.*
 import app.sillytavern.android.worldinfo.*
 import java.io.File
 import kotlinx.coroutines.*
@@ -42,6 +43,11 @@ data class ChatUiState(
     val autoMode: Boolean = false,
     /** A summary is being written by the model. */
     val summarizing: Boolean = false,
+    /** Attachment waiting to be sent with the next user message. */
+    val pendingImage: String? = null,
+    val pendingFile: app.sillytavern.android.media.FileAttachment? = null,
+    /** A caption or image is being produced. */
+    val mediaBusy: Boolean = false,
 )
 
 /**
@@ -294,6 +300,7 @@ class ChatController(
         }
         override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun caption(mesId: Int?, prompt: String?): String = captionMessage(mesId ?: messages.indexOfLast { it.imagePath != null }, prompt)
         override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
         override fun currentSummary(): String = summaryText()
         override suspend fun createBranch(mesId: Int): String? = this@ChatController.createBranch(mesId)
@@ -596,11 +603,74 @@ class ChatController(
     }
 
     fun send(text: String) {
-        if (text.isBlank() || _state.value.generating) return
+        val st = _state.value
+        val hasAttachment = st.pendingImage != null || st.pendingFile != null
+        if ((text.isBlank() && !hasAttachment) || st.generating) return
         val persona = settings().activePersona.name
-        mutate { it + ChatMessage.user(persona, regexed(text.trim(), Placement.USER_INPUT, RegexParams()).ifBlank { text.trim() }) }
+        var msg = ChatMessage.user(persona, regexed(text.trim(), Placement.USER_INPUT, RegexParams()).ifBlank { text.trim() })
+        st.pendingImage?.let { msg = msg.withImage(it) }
+        st.pendingFile?.let { msg = msg.withFile(it) }
+        _state.update { it.copy(pendingImage = null, pendingFile = null) }
+        mutate { it + msg }
         fireAuto(QuickReplyService.Trigger.USER)
-        newReply(isUserInput = true, input = text)
+        val idx = messages.lastIndex
+        val captionable = settings().activeConnection?.let(Captioner::supported) == true
+        if (msg.imagePath != null && settings().media.attachments.autoCaption && captionable) {
+            // Caption first (like ST), then answer; a failed caption is reported but does not block the reply.
+            _state.update { it.copy(generating = true, mediaBusy = true) }
+            job = scope.launch {
+                try { captionMessage(idx) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    _state.update { it.copy(error = "Caption failed: ${e.message}") }
+                }
+                _state.update { it.copy(generating = false, mediaBusy = false) }
+                newReply(isUserInput = true, input = text)
+            }
+        } else newReply(isUserInput = true, input = text)
+    }
+
+    // ---------------------------------------------------------------- media
+
+    /** Folder (inside `user/images`) for the open chat's images. */
+    fun imageFolder(): String = MessageMedia.folderFor(group?.name ?: _state.value.character?.card?.name ?: "chat")
+
+    /** Stores [bytes] under `user/images/<folder>/` and returns the path relative to the data root; null without a media root. */
+    fun saveMedia(bytes: ByteArray, fileName: String, folder: String = imageFolder()): String? {
+        val root = mediaRoot ?: return null
+        val safe = app.sillytavern.android.data.StoragePaths.sanitizeFileName(fileName)
+        val dir = File(root, "user/images/$folder").also { it.mkdirs() }
+        var f = File(dir, safe)
+        var n = 1
+        while (f.exists()) f = File(dir, safe.substringBeforeLast('.') + "_${n++}" + safe.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" })
+        f.writeBytes(bytes)
+        return "user/images/$folder/${f.name}"
+    }
+
+    fun attachImage(bytes: ByteArray, fileName: String) {
+        val path = saveMedia(bytes, fileName) ?: return
+        _state.update { it.copy(pendingImage = path) }
+    }
+
+    fun attachTextFile(text: String, fileName: String) {
+        val bytes = text.toByteArray()
+        val path = saveMedia(bytes, fileName, "files") ?: return
+        _state.update { it.copy(pendingFile = app.sillytavern.android.media.FileAttachment(path, fileName, bytes.size.toLong())) }
+    }
+
+    fun clearAttachments() = _state.update { it.copy(pendingImage = null, pendingFile = null) }
+
+    /** Captions the image of message [index] with the active connection and stores it in `extra.image_caption`. */
+    suspend fun captionMessage(index: Int, prompt: String? = null): String {
+        val m = messages.getOrNull(index) ?: throw CommandError("Message $index not found")
+        val path = m.imagePath ?: throw CommandError("Message $index has no image")
+        val s = settings()
+        val profile = s.activeConnection ?: throw CommandError("No connection configured. Add one in Settings.")
+        if (!Captioner.supported(profile)) throw CommandError("Captioning needs a chat-completion connection that accepts images")
+        val url = loadImage(path) ?: throw CommandError("Image file not found")
+        val req = Captioner.request(profile, apiKey(profile.id), prompt ?: s.media.attachments.captionPrompt, url)
+        val caption = Captioner.caption(backendFor(profile.type), req)
+        if (caption.isBlank()) throw CommandError("The model returned no caption")
+        mutate { l -> l.toMutableList().also { if (index in it.indices) it[index] = it[index].withCaption(caption) } }
+        return caption
     }
 
     /** A fresh reply: one message from the open character, or a batch from the members the group activates. */
