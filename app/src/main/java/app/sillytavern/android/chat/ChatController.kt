@@ -75,6 +75,8 @@ class ChatController(
     private val imageBackend: ImageBackend = ImageGenerator(),
     /** Secret-store lookup for the media services (see [MediaSettings.KEY_IMAGE]). */
     private val mediaKey: (String) -> String? = { null },
+    /** Vector memory and Data Bank retrieval (set 10); null disables them. */
+    private val memory: app.sillytavern.android.memory.MemoryService? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -842,6 +844,7 @@ class ChatController(
             input.copy(worldInfo = prompt)
         } ?: input
         val req = makeRequest(worldInfoInput, profile, s)
+        val memoryContext = app.sillytavern.android.memory.MemoryContext(chat?.file?.nameWithoutExtension, if (group != null) group?.id else character.fileName, history)
         _state.update { it.copy(generating = true, error = null) }
         job = scope.launch {
             val acc = StringBuilder(prefix)
@@ -850,9 +853,12 @@ class ChatController(
             // A fresh reply starts without the previous reply's reasoning (continue keeps it).
             if (targetIndex != null && !appendTo) setTargetReasoning(targetIndex, null)
             try {
+                val recalled = recall(memoryContext)
+                val finalReq = if (recalled.isEmpty()) req
+                else makeRequest(worldInfoInput.copy(extensionPrompts = worldInfoInput.extensionPrompts + recalled), profile, s)
                 val backend = backendFor(profile.type)
-                val stream: Flow<Chunk> = if (backend is ChunkBackend) ToolLoop.run(backend, req, toolRegistry)
-                else backend.generate(req).map { Chunk.Text(it) }
+                val stream: Flow<Chunk> = if (backend is ChunkBackend) ToolLoop.run(backend, finalReq, toolRegistry)
+                else backend.generate(finalReq).map { Chunk.Text(it) }
                 stream.collect { chunk ->
                     when (chunk) {
                         is Chunk.Text -> {
@@ -882,6 +888,15 @@ class ChatController(
                     if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
                 }
             }
+        }
+    }
+
+    /** Vector memory / Data Bank prompts; a failing embedding service only produces a notice. */
+    private suspend fun recall(ctx: app.sillytavern.android.memory.MemoryContext): List<ExtensionPrompt> {
+        val m = memory ?: return emptyList()
+        return try { m.prompts(ctx) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            _state.update { it.copy(notice = "Memory unavailable: ${e.message ?: e.javaClass.simpleName}") }
+            emptyList()
         }
     }
 

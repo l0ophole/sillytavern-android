@@ -21,11 +21,15 @@ open class ChatFeaturesTestBase {
     var reply = "reply"
     val backend = Backend { req -> requests += req; flow { emit(reply) } }
 
+    /** Set before calling [controller] to enable vector memory / Data Bank. */
+    var memoryService: app.sillytavern.android.memory.MemoryService? = null
+
     fun TestScope.controller(): ChatController = ChatController(
         ChatRepository(paths), { backend }, { cfg }, { "key" }, this,
         worlds = app.sillytavern.android.worldinfo.WorldBookRepository(paths),
         updateSettings = { f -> cfg = f(cfg) },
         mediaRoot = paths.root,
+        memory = memoryService,
     )
 
     fun lastContents() = requests.last().messages.map { it.content }

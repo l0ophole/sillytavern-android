@@ -2,6 +2,7 @@ package app.sillytavern.android
 
 import app.sillytavern.android.appearance.BackgroundRepository
 import app.sillytavern.android.media.*
+import app.sillytavern.android.memory.*
 import app.sillytavern.android.regex.RegexRepository
 import app.sillytavern.android.quickreply.QuickReplyRepository
 import app.sillytavern.android.quickreply.QuickReplyService
@@ -40,6 +41,9 @@ class AppContainer(app: Application) {
         { settings.settings.value.media.stt }, { secrets.get(MediaSettings.KEY_STT) },
         AndroidVoiceInput(app),
     )
+    val memory = MemoryService(
+        paths, { settings.settings.value.memory }, { secrets.get(MemorySettings.KEY_EMBEDDINGS) },
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
@@ -56,6 +60,7 @@ class AppContainer(app: Application) {
         counterFor = { if (it == BackendType.OPENAI) tiktoken else ApproxTokenCounter },
         mediaRoot = paths.root,
         mediaKey = { secrets.get(it) },
+        memory = memory,
     )
 
     val quickReplies = QuickReplyService(
