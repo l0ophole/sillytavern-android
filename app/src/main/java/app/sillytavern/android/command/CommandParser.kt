@@ -66,6 +66,11 @@ object CommandParser {
                 val c = s[i]
                 when {
                     c == '|' -> break
+                    (lit.isEmpty() || lit.last().isWhitespace()) && NAMED.matchAt(s, i) != null && NAMED.matchAt(s, i)!!.range.last < to -> {
+                        val m = NAMED.matchAt(s, i)!!
+                        val (v, ni) = namedValue(m.range.last + 1, to)
+                        named[m.groupValues[1]] = v; i = ni
+                    }
                     c == '\\' && i + 1 < to && s[i + 1] == '|' -> { lit.append('|'); i += 2 }
                     s.startsWith("{{", i) -> { val e = macroEnd(i, to); lit.append(s, i, e); i = e }
                     s.startsWith("{:", i) && (i == start || i == 0 || s[i - 1].isWhitespace() || lit.isEmpty()) -> {
