@@ -9,11 +9,12 @@ class StoragePaths(val root: File) {
     val userAvatars = File(root, "User Avatars")
     val presets = File(root, "OpenAI Settings")
     val worlds = File(root, "worlds")
+    val regexDir = File(root, "regex")
     val settingsFile = File(root, "settings.json")
     val secretsFile = File(root, "secrets.enc.json")
 
     fun ensure(): StoragePaths {
-        listOf(root, characters, chats, userAvatars, presets, worlds).forEach { it.mkdirs() }
+        listOf(root, characters, chats, userAvatars, presets, worlds, regexDir).forEach { it.mkdirs() }
         return this
     }
 

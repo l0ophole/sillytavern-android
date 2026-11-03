@@ -1,0 +1,1 @@
+{"id":"b1f2c3d4-0000-4000-8000-000000000001","scriptName":"Strip thinking","findRegex":"/<think>[\\s\\S]*?<\\/think>/gi","replaceString":"","trimStrings":[],"placement":[2],"disabled":false,"markdownOnly":false,"promptOnly":true,"runOnEdit":true,"substituteRegex":0,"minDepth":null,"maxDepth":null,"futureKey":42}
