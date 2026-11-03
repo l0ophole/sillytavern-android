@@ -19,7 +19,7 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit, onTags: () -> Unit = {}) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
@@ -53,6 +53,9 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             }
             Row {
                 TextButton(onClick = onWorlds) { Text("World Info (${s.globalWorldBooks.size} global)") }
+            }
+            Row {
+                TextButton(onClick = onTags) { Text("Tags & folders (${s.tags.size})") }
             }
             Row {
                 TextButton(onClick = onQuickReplies) { Text("Quick Replies (${s.quickReplies.globalSets.size} global)") }

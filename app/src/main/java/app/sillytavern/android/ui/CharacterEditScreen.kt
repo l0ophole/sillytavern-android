@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.sillytavern.android.AppContainer
 import app.sillytavern.android.card.CharacterCard
+import app.sillytavern.android.tags.TagOps
+import app.sillytavern.android.tags.updateTags
 import app.sillytavern.android.worldinfo.WorldJson
 import kotlinx.serialization.json.*
 import coil.compose.AsyncImage
@@ -58,6 +60,8 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
     var scoped by remember { mutableStateOf(c.regexScripts.scopedOf(base)) }
     val qrNames = remember { c.quickReplyRepo.list() }
     var qrSet by remember { mutableStateOf(existing?.fileName?.let { c.settings.settings.value.quickReplies.characterSets[it] }) }
+    var fav by remember { mutableStateOf(base.fav) }
+    var talk by remember { mutableStateOf(base.talkativeness.toFloat()) }
     var avatar by remember { mutableStateOf<ByteArray?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -75,9 +79,10 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
                     alternateGreetings = alts.split(Regex("\\n---\\n")).map { it.trim() }.filter { it.isNotEmpty() },
                     tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() },
                     raw = withWorld(base.raw, world),
-                ).let { cd -> c.regexScripts.withScoped(cd, scoped) }
+                ).withFav(fav).withTalkativeness(talk.toDouble()).let { cd -> c.regexScripts.withScoped(cd, scoped) }
                 runCatching { c.characters.save(existing?.fileName, card, avatar) }
                     .onSuccess { saved ->
+                        if (existing == null) c.settings.updateTags { TagOps.importCardTags(it, saved.fileName + ".png", card.tags) }
                         c.settings.update { st ->
                             val m = st.quickReplies.characterSets - saved.fileName
                             st.copy(quickReplies = st.quickReplies.copy(characterSets = if (qrSet == null) m else m + (saved.fileName to qrSet!!)))
@@ -105,7 +110,13 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
             Field("System prompt override", sys, { sys = it }, singleLine = false, minLines = 2)
             Field("Post-history instructions", post, { post = it }, singleLine = false, minLines = 2)
             Field("Creator notes", notes, { notes = it }, singleLine = false, minLines = 2)
-            Field("Tags (comma separated)", tags, { tags = it })
+            if (existing == null) Field("Tags (comma separated)", tags, { tags = it })
+            else EntityTagEditor(c, existing.fileName + ".png")
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Favorite", Modifier.weight(1f)); Switch(fav, { fav = it })
+            }
+            Text("Talkativeness in group chats: ${"%.2f".format(talk)}", style = MaterialTheme.typography.labelLarge)
+            Slider(talk, { talk = it }, valueRange = 0f..1f)
             Pick("Lorebook", listOf("(none)") + worldNames, if (world.isBlank()) 0 else worldNames.indexOf(world) + 1) { world = if (it == 0) "" else worldNames[it - 1] }
             (base.raw["character_book"] as? JsonObject)?.let { cb ->
                 OutlinedButton(onClick = {

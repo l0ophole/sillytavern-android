@@ -24,7 +24,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdit: (String) -> Unit) {
+fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdit: (String) -> Unit, groupId: String? = null, onEditGroup: (String) -> Unit = {}) {
     val ctl = c.chatController
     val state by ctl.state.collectAsState()
     val clipboard = LocalClipboardManager.current
@@ -40,8 +40,9 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     val appSettings by c.settings.settings.collectAsState()
     val bar = remember(appSettings, state.chat?.file, state.character) { c.quickReplies.bar() }
 
-    LaunchedEffect(characterFile) {
-        if (state.character?.fileName != characterFile) c.characters.get(characterFile)?.let { ctl.open(it) }
+    LaunchedEffect(characterFile, groupId) {
+        if (groupId != null) { if (state.group?.id != groupId) c.groups.get(groupId)?.let { ctl.openGroup(it) } }
+        else if (state.group != null || state.character?.fileName != characterFile) c.characters.get(characterFile)?.let { ctl.open(it) }
     }
     DisposableEffect(Unit) { onDispose { /* generation continues while app process lives; see worklog */ } }
     val messages = state.chat?.messages.orEmpty()
@@ -58,7 +59,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.character?.card?.name ?: "") },
+                title = { Text(state.group?.name ?: state.character?.card?.name ?: "") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
                 actions = {
                     Box {
@@ -71,7 +72,11 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                             DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
                             DropdownMenuItem({ Text("Chat lorebook…") }, { menu = false; showBook = true })
                             DropdownMenuItem({ Text("Chat quick reply set…") }, { menu = false; showQrSet = true })
-                            DropdownMenuItem({ Text("Edit character") }, { menu = false; onEdit(characterFile) })
+                            val grp = state.group
+                            if (grp != null) {
+                                DropdownMenuItem({ Text(if (state.autoMode) "Auto mode: turn off" else "Auto mode: turn on") }, { menu = false; ctl.setAutoMode(!state.autoMode) })
+                                DropdownMenuItem({ Text("Edit group") }, { menu = false; onEditGroup(grp.id) })
+                            } else DropdownMenuItem({ Text("Edit character") }, { menu = false; onEdit(characterFile) })
                         }
                     }
                 },
@@ -93,6 +98,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                     }, label = { Text(qr.label.ifBlank { "?" }, maxLines = 1) })
                 }
             }
+            state.group?.let { g -> MemberStrip(g, state.members, state.generating, state.groupQueue, onSpeak = ctl::speak, onMute = ctl::muteMember) }
             Row(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6)
                 Spacer(Modifier.width(8.dp))
@@ -198,7 +204,7 @@ private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
             LazyColumn {
                 itemsIndexed(files) { _, f: File ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(modifier = Modifier.weight(1f), onClick = { ctl.state.value.character?.let { ch -> ctl.open(ch, f) }; onDismiss() }) {
+                        TextButton(modifier = Modifier.weight(1f), onClick = { ctl.openChatFile(f); onDismiss() }) {
                             Text(f.nameWithoutExtension + if (f == current) "  ✓" else "", maxLines = 2)
                         }
                         TextButton(onClick = { ctl.deleteChatFile(f); files = ctl.chatFiles() }) { Text("🗑") }
@@ -208,4 +214,26 @@ private fun ChatListDialog(c: AppContainer, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/** Group members as chips: tap = that member speaks, long-press = mute / unmute. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MemberStrip(
+    g: app.sillytavern.android.group.Group, members: List<app.sillytavern.android.card.StoredCharacter>, generating: Boolean,
+    queue: List<String>, onSpeak: (String) -> Unit, onMute: (String, Boolean) -> Unit,
+) {
+    androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(g.members.size) { idx ->
+            val a = g.members[idx]
+            val ch = members.firstOrNull { it.fileName + ".png" == a }
+            val muted = g.isMuted(a)
+            val label = (if (muted) "🔇 " else if (a in queue) "▶ " else "") + (ch?.card?.name ?: "${a.removeSuffix(".png")} (missing)")
+            Surface(
+                shape = RoundedCornerShape(16.dp), tonalElevation = if (muted) 0.dp else 3.dp,
+                color = if (muted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.combinedClickable(enabled = ch != null, onClick = { if (!generating) onSpeak(a) }, onLongClick = { onMute(a, !muted) }),
+            ) { Text(label, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+        }
+    }
 }

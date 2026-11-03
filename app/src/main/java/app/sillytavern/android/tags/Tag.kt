@@ -73,3 +73,7 @@ object TagOps {
 
     fun removeKey(s: TagState, key: String) = s.copy(map = s.map - key)
 }
+
+/** Applies a [TagState] transformation to the persisted settings. */
+fun app.sillytavern.android.data.SettingsRepository.updateTags(f: (TagState) -> TagState) =
+    update { s -> f(s.tagState).let { n -> s.copy(tags = n.tags, tagMap = n.map) } }

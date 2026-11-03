@@ -37,12 +37,22 @@ private fun AppNav(c: AppContainer) {
             CharacterListScreen(c,
                 onOpenChat = { nav.navigate("chat/${android.net.Uri.encode(it)}") },
                 onEdit = { nav.navigate("edit/${android.net.Uri.encode(it ?: "")}") },
-                onSettings = { nav.navigate("settings") })
+                onSettings = { nav.navigate("settings") },
+                onOpenGroup = { nav.navigate("groupchat/${android.net.Uri.encode(it)}") },
+                onEditGroup = { nav.navigate("groupedit/${android.net.Uri.encode(it ?: "")}") })
         }
         composable("chat/{file}", listOf(navArgument("file") { type = NavType.StringType })) {
             ChatScreen(c, it.arguments!!.getString("file")!!, onBack = { nav.popBackStack() },
                 onEdit = { f -> nav.navigate("edit/${android.net.Uri.encode(f)}") })
         }
+        composable("groupchat/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
+            ChatScreen(c, "", groupId = it.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, onEdit = {},
+                onEditGroup = { id -> nav.navigate("groupedit/${android.net.Uri.encode(id)}") })
+        }
+        composable("groupedit/{id}", listOf(navArgument("id") { type = NavType.StringType; defaultValue = "" })) {
+            GroupEditScreen(c, it.arguments?.getString("id").orEmpty().ifEmpty { null }, onDone = { nav.popBackStack() })
+        }
+        composable("tags") { TagManagerScreen(c, onBack = { nav.popBackStack() }) }
         composable("edit/{file}", listOf(navArgument("file") { type = NavType.StringType; defaultValue = "" })) {
             CharacterEditScreen(c, it.arguments?.getString("file").orEmpty().ifEmpty { null }, onDone = { nav.popBackStack() })
         }
@@ -50,7 +60,8 @@ private fun AppNav(c: AppContainer) {
             SettingsScreen(c, onBack = { nav.popBackStack() },
                 onPromptManager = { nav.navigate("promptmanager") }, onPresets = { nav.navigate("presets") },
                 onWorlds = { nav.navigate("worlds") },
-                onQuickReplies = { nav.navigate("quickreplies") }, onRegex = { nav.navigate("regex") })
+                onQuickReplies = { nav.navigate("quickreplies") }, onRegex = { nav.navigate("regex") },
+                onTags = { nav.navigate("tags") })
         }
         composable("promptmanager") { PromptManagerScreen(c, onBack = { nav.popBackStack() }) }
         composable("worlds") { WorldInfoScreen(c, onOpenBook = { nav.navigate("worlds/${android.net.Uri.encode(it)}") }, onBack = { nav.popBackStack() }) }
