@@ -199,7 +199,11 @@ private fun JsonObjectBuilder.putSamplerPreset(p: TextGenSamplerPreset) {
 
 internal fun openAiMessage(m: PromptMessage): JsonObject = buildJsonObject {
     put("role", m.role.name.lowercase())
-    put("content", m.content)
+    if (m.images.isEmpty() || m.role == Role.ASSISTANT || m.role == Role.SYSTEM) put("content", m.content)
+    else put("content", JsonArray(buildList {
+        if (m.content.isNotBlank()) add(buildJsonObject { put("type", "text"); put("text", m.content) })
+        m.images.forEach { u -> add(buildJsonObject { put("type", "image_url"); put("image_url", buildJsonObject { put("url", u) }) }) }
+    }))
     if (m.role == Role.ASSISTANT && m.toolCalls.isNotEmpty()) {
         put("tool_calls", JsonArray(m.toolCalls.map {
             buildJsonObject {
@@ -382,8 +386,16 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
          * Like [toAnthropicMessages] but supports tool calls/results: assistant tool calls become `tool_use` blocks and
          * TOOL messages become `tool_result` blocks inside a user turn.
          */
+        private fun imageBlock(url: String): JsonObject? {
+            val (mime, data) = app.sillytavern.android.media.MessageMedia.parseDataUrl(url) ?: return null
+            return buildJsonObject {
+                put("type", "image")
+                put("source", buildJsonObject { put("type", "base64"); put("media_type", mime); put("data", data) })
+            }
+        }
+
         fun toAnthropicTurns(messages: List<PromptMessage>): Pair<String, List<JsonObject>> {
-            if (messages.none { it.role == Role.TOOL || it.toolCalls.isNotEmpty() }) {
+            if (messages.none { it.role == Role.TOOL || it.toolCalls.isNotEmpty() || it.images.isNotEmpty() }) {
                 val (sys, turns) = toAnthropicMessages(messages)
                 return sys to turns.map { buildJsonObject { put("role", it.first); put("content", it.second) } }
             }
@@ -406,7 +418,10 @@ class AnthropicBackend(client: OkHttpClient) : HttpBackend(client) {
                         })
                     }
                 }
-                else -> add("user", textBlock(m.content))
+                else -> {
+                    if (m.content.isNotBlank() || m.images.isEmpty()) add("user", textBlock(m.content))
+                    m.images.forEach { u -> imageBlock(u)?.let { add("user", it) } }
+                }
             }
             if (turns.isEmpty() || turns.first().first != "user") turns.add(0, "user" to mutableListOf(textBlock("[Start a new chat]")))
             return system to turns.map { (role, blocks) -> buildJsonObject { put("role", role); put("content", JsonArray(blocks)) } }

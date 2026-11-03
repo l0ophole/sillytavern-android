@@ -34,6 +34,9 @@ class OllamaBackend(client: OkHttpClient) : HttpBackend(client) {
             put("messages", JsonArray(req.messages.map { m ->
                 buildJsonObject {
                     put("role", m.role.name.lowercase()); put("content", m.content)
+                    if (m.images.isNotEmpty()) put("images", JsonArray(m.images.mapNotNull {
+                        app.sillytavern.android.media.MessageMedia.parseDataUrl(it)?.second?.let(::JsonPrimitive)
+                    }))
                     if (m.role == app.sillytavern.android.prompt.Role.ASSISTANT && m.toolCalls.isNotEmpty()) {
                         put("tool_calls", JsonArray(m.toolCalls.map { c ->
                             buildJsonObject { put("function", buildJsonObject { put("name", c.name); put("arguments", parseArgs(c.arguments)) }) }

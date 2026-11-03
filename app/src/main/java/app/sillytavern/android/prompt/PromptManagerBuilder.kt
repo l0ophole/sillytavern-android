@@ -26,8 +26,10 @@ internal object PromptSupport {
     )
 
     /** [text] prefixed with the message author's name when [prefix] is on (group chats); narrator lines are left alone. */
-    fun speaker(m: app.sillytavern.android.chat.ChatMessage, text: String, i: PromptInput, prefix: Boolean): String =
-        if (prefix && !m.isNarrator && m.name.isNotBlank() && text.isNotBlank()) "${m.name}: $text" else text
+    fun speaker(m: app.sillytavern.android.chat.ChatMessage, text: String, i: PromptInput, prefix: Boolean): String {
+        val named = if (prefix && !m.isNarrator && m.name.isNotBlank() && text.isNotBlank()) "${m.name}: $text" else text
+        return i.media?.let { app.sillytavern.android.media.MediaPrompt.decorate(m, named, it) } ?: named
+    }
 
     /** Message text after regex scripts for the prompt (depth 0 = newest message). */
     fun regexed(m: app.sillytavern.android.chat.ChatMessage, depth: Int, i: PromptInput, ctx: MacroContext): String {

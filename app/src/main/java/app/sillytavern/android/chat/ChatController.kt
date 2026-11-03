@@ -64,6 +64,8 @@ class ChatController(
     /** Looks a character up by file name (group members are stored as `<fileName>.png`). */
     private val characterLookup: (String) -> StoredCharacter? = { null },
     private val random: Random = Random.Default,
+    /** Data root; attachments are stored relative to it (`user/images/...`). Null disables attachments in prompts. */
+    val mediaRoot: File? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -565,15 +567,33 @@ class ChatController(
 
     fun setSummarySettings(f: (SummarySettings) -> SummarySettings) = updateSettings { it.copy(summary = f(it.summary)) }
 
-    private fun makeRequest(input: PromptInput, profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): GenerationRequest =
-        if (profile.type.usesTextPrompt) {
+    /** Prompt-side attachment handling: text backends can only use captions. */
+    private fun mediaContext(profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): app.sillytavern.android.media.MediaPromptContext? {
+        val root = mediaRoot ?: return null
+        val mode = if (profile.type.usesTextPrompt) app.sillytavern.android.media.ImagePromptMode.USE_CAPTION else s.media.attachments.mode
+        return app.sillytavern.android.media.MediaPromptContext(mode) { path ->
+            app.sillytavern.android.media.MessageMedia.resolve(root, path)?.takeIf { it.isFile && it.length() < 1_000_000 }?.readText()
+        }
+    }
+
+    private fun loadImage(path: String): String? {
+        val root = mediaRoot ?: return null
+        val f = app.sillytavern.android.media.MessageMedia.resolve(root, path)?.takeIf { it.isFile } ?: return null
+        return app.sillytavern.android.media.MessageMedia.dataUrl(f.name, f.readBytes())
+    }
+
+    private fun makeRequest(rawInput: PromptInput, profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): GenerationRequest {
+        val input = if (rawInput.media == null) rawInput.copy(media = mediaContext(profile, s)) else rawInput
+        return if (profile.type.usesTextPrompt) {
             val formatted = PromptBuilder.buildText(input, s.activeInstruct, s.activeContext)
             GenerationRequest(
                 profile, apiKey(profile.id), emptyList(), formatted.text,
                 stopSequences = (profile.sampler.stopSequences + formatted.stopStrings).distinct(),
                 sampler = s.activeSamplerPreset,
             )
-        } else GenerationRequest(profile, apiKey(profile.id), PromptBuilder.build(input), "")
+        } else GenerationRequest(profile, apiKey(profile.id),
+            app.sillytavern.android.media.MediaPrompt.resolve(PromptBuilder.build(input), keepImages = input.media != null, load = ::loadImage), "")
+    }
 
     fun send(text: String) {
         if (text.isBlank() || _state.value.generating) return

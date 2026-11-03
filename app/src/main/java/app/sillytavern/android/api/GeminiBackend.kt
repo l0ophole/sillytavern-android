@@ -98,7 +98,14 @@ class GeminiBackend(client: OkHttpClient) : HttpBackend(client) {
                         put("response", buildJsonObject { put("result", m.content) })
                     })
                 })
-                else -> add("user", text(m.content))
+                else -> {
+                    if (m.content.isNotBlank() || m.images.isEmpty()) add("user", text(m.content))
+                    m.images.forEach { u ->
+                        app.sillytavern.android.media.MessageMedia.parseDataUrl(u)?.let { (mime, data) ->
+                            add("user", buildJsonObject { put("inlineData", buildJsonObject { put("mimeType", mime); put("data", data) }) })
+                        }
+                    }
+                }
             }
             // Adjacent text-only parts of the same role are merged into one part (keeps the old behaviour).
             val merged = turns.map { (role, parts) ->

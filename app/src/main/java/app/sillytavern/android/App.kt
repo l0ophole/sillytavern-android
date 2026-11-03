@@ -44,6 +44,7 @@ class AppContainer(app: Application) {
         updateSettings = { f -> settings.update(f) },
         groups = groups, characterLookup = { characters.get(it) },
         counterFor = { if (it == BackendType.OPENAI) tiktoken else ApproxTokenCounter },
+        mediaRoot = paths.root,
     )
 
     val quickReplies = QuickReplyService(

@@ -22,6 +22,8 @@ data class PromptMessage(
     val toolCalls: List<app.sillytavern.android.api.Chunk.ToolCall> = emptyList(),
     val toolCallId: String? = null,
     val toolName: String? = null,
+    /** Image parts as `data:` URLs (user/assistant messages only). */
+    val images: List<String> = emptyList(),
 )
 
 enum class GenerationMode { NORMAL, CONTINUE, IMPERSONATE }
@@ -46,6 +48,8 @@ data class PromptInput(
     val groupNames: Boolean = false,
     /** Author's Note, summary and similar feature prompts. */
     val extensionPrompts: List<ExtensionPrompt> = emptyList(),
+    /** Attachment handling; null leaves attachments out of the prompt. */
+    val media: app.sillytavern.android.media.MediaPromptContext? = null,
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
