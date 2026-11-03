@@ -104,8 +104,10 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 12.dp), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(messages) { i, m ->
+                val shown = remember(m.text, m.isUser, appSettings.regexEnabled, state.character) { ctl.displayText(m) }
+                val shownReasoning = remember(m.reasoning, appSettings.regexEnabled, state.character) { m.reasoning?.let(ctl::displayReasoning) }
                 MessageBubble(
-                    m, shown = ctl.displayText(m), shownReasoning = m.reasoning?.let(ctl::displayReasoning), isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
+                    m, shown = shown, shownReasoning = shownReasoning, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
                     onLongPress = { actionsFor = i }, onSwipe = { d -> ctl.swipe(i, d) },
                 )
             }

@@ -93,3 +93,30 @@
 
 ## Remaining
 See docs/ROADMAP.md.
+
+## Done (feature set 5: macros + commands) — plan: docs/plans/04-macros-commands.md
+- Macro engine (`macro/`): real parser (nested `{{a::{{b}}}}`, `::` args, legacy `{{random:a,b}}`, comments), registry, bounded multi-pass evaluation (8 passes), scoped `{{if}}…{{else}}…{{/if}}` (nesting-aware). `Macros.expand` is now a facade, so sets 2–3 are unchanged
+- Macro set: user/char/card fields (`charPrompt`, `mesExamples`, `charDepthPrompt`, …), `group`/`notChar`, `space`/`newline` counts, `reverse`, `random`/`pick`/`roll`, `time`/`date`/`weekday`/`isotime`/`isodate`, `datetimeformat` (moment tokens), `time_UTC±N`, `idleDuration`, `timeDiff`, `maxPrompt`/`maxContext`/`maxResponse`, `model`, `input`, `original`, local+global variables (`set/add/inc/dec/get/has/deletevar` and `…globalvar`), all `instruct*` macros, chat macros (`lastMessage`, `lastUserMessage`, `lastCharMessage`, `lastMessageId`, `firstIncludedMessageId`, `firstDisplayedMessageId`, `lastSwipeId`, `currentSwipeId`, `allChatRange`)
+- Variables: local in `chat_metadata.variables`, global in `AppSettings.globalVariables`; numeric strings stored as numbers (as ST)
+- Slash commands (`command/`): parser (pipes, escaped `\|`, quoted/bare named args anywhere, `{: closures :}`, `//` comments), executor with scope (`/let`), `{{pipe}}`, `{{var::x}}`, `{{timesIndex}}`, loop cap 100 000 and call-depth cap 32. Library: `/pass /return /abort /break /echo /sleep /help /if /while /times /run /: /let /var /setvar… /len /upper /lower /trim /substr /replace /split /join /sort /roll`, math (`/add /sub /mul /div /mod /pow /min /max /abs /round /sqrt /rand`), chat (`/sys /send /sendas /trigger /gen /genraw /continue /regenerate /swipe /impersonate /delete /cut /hide /unhide /setinput /messages /newchat /renamechat /getchatname /world /persona`), Quick Reply (`/qr /qr-list /qr-set-list /qr-set-on/off /qr-chat-set(-off) /qr-create /qr-update /qr-delete`)
+- Input box: text starting with `/` + a non-space runs as a script (`ChatController.submit`); unknown commands report an error and are NOT sent to the model; `/ x` and `//` are sent as chat
+- `/sys` messages are narrator messages (`is_system`, `extra.type=narrator`) and are sent to the model as system messages; `/hide` sets `extra.hidden` and drops the message from prompts
+- Regex scripts (`regex/`): ST script JSON (lenient read, unknown keys kept), port of `getRegexedString`/`runRegexScript` (placements, markdown-only/prompt-only, run-on-edit, depth window, trim strings, `$1`/`$<name>`/`{{match}}`, substitute modes), global (`regex/global.json`) and per-character (`extensions.regex_scripts`). Applied: user input and finished replies (stored text, unless markdown-/prompt-only), prompt copies with depth, World Info content, display (bubble + reasoning). 250 ms budget per script against catastrophic backtracking, inputs > 1 MB skipped
+- Quick Replies (`quickreply/`): ST v2 set files in `QuickReplies/`, import (name collisions renamed)/export, global + chat (`chat_metadata.quickReply.set`) + character sets, button bar in chat, `injectInput`/`placeBeforeInput`/`disableSend` semantics, auto-execute (startup/user/AI/chat change/new chat, `automationId`)
+- UI: Quick Replies screens, Regex scripts screen (with test box), per-character regex + QR set in the character editor, chat-menu QR set, global variables list in Settings
+- Tests: 422 JVM unit tests (all pass), lint has no errors, debug APK builds
+
+## Rulings / deviations (set 5)
+- Executed on `main` without a worktree (as sets 2–4); tasks 2–4 share one commit; tests for tasks 5, 6, 8, 10 were written together with (not strictly before) the implementation
+- Scoped macro content is trimmed (ST does so); macro flags (`!?~>`) are parsed and ignored; `{{name arg}}` with a space is only accepted for the scoped `if`
+- `/var NAME=value` sets and `/var NAME` gets a local variable; QR set commands use ST's names (`/qr-set-on/off` global, `/qr-chat-set` per chat) instead of the plan's `/qr-set`
+- Regex scripts are parsed with a lenient hand-written reader instead of `@Serializable`; JS named groups with underscores are renamed for `java.util.regex`; `/s` → DOTALL, `/y` and `/u` ignored
+- Auto-execute only runs slash scripts (plain-text QRs are skipped) and is non-reentrant, to avoid message loops
+- `/gen` uses the visible chat plus the prompt as a final user message; neither `/gen` nor `/genraw` runs World Info
+- Final review was a self-review (no reviewer subagent)
+
+## Not verified (set 5)
+- UI never run on a device/emulator (QR bar, regex dialogs, notices compile and pass lint only)
+- Behavior is checked against hand-written expectations from ST's source, not against real SillyTavern output (macro edge cases, regex replacement semantics, `idleDuration`/`timeDiff` wording)
+- Commands that mutate the chat while a reply is streaming (e.g. an auto-run `/cut`) can shift the streaming target message; not guarded
+- Not implemented: autocomplete/help popup, command debugger, QR context-menu links, `/popup`, `/api`, `/model`, group commands (set 6), JS in QRs/regex (set 12), preset-scoped regex scripts
