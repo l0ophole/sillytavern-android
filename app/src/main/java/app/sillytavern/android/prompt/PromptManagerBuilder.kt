@@ -24,6 +24,14 @@ internal object PromptSupport {
         vars = i.vars,
     )
 
+    /** Message text after regex scripts for the prompt (depth 0 = newest message). */
+    fun regexed(m: app.sillytavern.android.chat.ChatMessage, depth: Int, i: PromptInput, ctx: MacroContext): String {
+        if (i.regexScripts.isEmpty()) return m.text
+        val placement = when { m.isNarrator -> app.sillytavern.android.regex.Placement.SLASH_COMMAND; m.isUser -> app.sillytavern.android.regex.Placement.USER_INPUT; else -> app.sillytavern.android.regex.Placement.AI_OUTPUT }
+        return app.sillytavern.android.regex.RegexEngine.apply(m.text, placement, i.regexScripts,
+            app.sillytavern.android.regex.RegexParams(isPrompt = true, depth = depth, macros = { Macros.expand(it, ctx) }))
+    }
+
     /** World Info depth entries as (depth from end) -> messages. */
     fun depthInjections(wi: WorldInfoPrompt): Map<Int, List<PromptMessage>> = wi.depth.filter { it.content.isNotBlank() }
         .groupBy({ it.depth }, { PromptMessage(when (it.role) { 1 -> Role.USER; 2 -> Role.ASSISTANT; else -> Role.SYSTEM }, it.content) })
@@ -100,9 +108,11 @@ object PromptManagerBuilder {
             GenerationMode.NORMAL -> ""
         }.takeIf { it.isNotBlank() }?.let { PromptMessage(Role.SYSTEM, it) }
 
-        var history = i.history.filter { it.inPrompt }.map { m ->
+        val inPrompt = i.history.filter { it.inPrompt }
+        var history = inPrompt.mapIndexed { idx, m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
-            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
+            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT,
+                x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)))
         }
         if (history.isEmpty() && pm.sendIfEmpty.isNotBlank()) history = listOf(PromptMessage(Role.USER, x(pm.sendIfEmpty)))
         val newChat = x(pm.newChatPrompt).takeIf { it.isNotBlank() && histIdx >= 0 }?.let { PromptMessage(Role.SYSTEM, it) }

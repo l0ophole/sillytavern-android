@@ -32,7 +32,11 @@ object WorldInfoRunner {
         )
         val result = WorldInfoScanner(settings, input.counter, expand = expand)
             .scan(entries, chat, input.maxContextTokens, global, timed, dryRun)
-        return WorldInfoAssembler.assemble(result.activated, expand) to result.timed
+        val contentExpand = if (input.regexScripts.isEmpty()) expand else { t: String ->
+            app.sillytavern.android.regex.RegexEngine.apply(expand(t), app.sillytavern.android.regex.Placement.WORLD_INFO, input.regexScripts,
+                app.sillytavern.android.regex.RegexParams(macros = expand))
+        }
+        return WorldInfoAssembler.assemble(result.activated, contentExpand) to result.timed
     }
 
     private fun metadata(chat: Chat) = chat.header["chat_metadata"] as? JsonObject ?: JsonObject(emptyMap())

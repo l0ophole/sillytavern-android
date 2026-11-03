@@ -40,6 +40,8 @@ data class PromptInput(
     val worldInfo: WorldInfoPrompt = WorldInfoPrompt(),
     /** Variable store for `{{getvar}}`-style macros; null in tests and previews. */
     val vars: app.sillytavern.android.macro.VariableStore? = null,
+    /** Regex scripts applied to history copies (prompt-side) and World Info content. */
+    val regexScripts: List<app.sillytavern.android.regex.RegexScript> = emptyList(),
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
@@ -74,9 +76,11 @@ object PromptBuilder {
         ).map(::x).filter { it.isNotBlank() }.joinToString("\n\n")
 
         val fixedTokens = i.counter.count(vars.values.joinToString("\n") + examples.joinToString("\n") + post) + 64
-        val all = i.history.filter { it.inPrompt }.map { m ->
+        val inPrompt = i.history.filter { it.inPrompt }
+        val all = inPrompt.mapIndexed { idx, m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
-            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT, x(m.text))
+            PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT,
+                x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)))
         }
         val wiInj = PromptSupport.depthInjections(i.worldInfo)
         val wiTokens = wiInj.values.flatten().sumOf { i.counter.count(it.content) + 4 }

@@ -13,6 +13,7 @@ import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.command.*
 import app.sillytavern.android.macro.VariableStore
+import app.sillytavern.android.regex.*
 import kotlinx.serialization.json.JsonObject
 import app.sillytavern.android.prompt.*
 import app.sillytavern.android.worldinfo.*
@@ -45,6 +46,8 @@ class ChatController(
     private val worlds: WorldBookRepository? = null,
     private val toolRegistry: ToolRegistry = EmptyToolRegistry,
     private val updateSettings: ((AppSettings) -> AppSettings) -> Unit = {},
+    /** Global + character-scoped regex scripts for the open chat. */
+    private val regex: () -> List<RegexScript> = { emptyList() },
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -116,6 +119,22 @@ class ChatController(
 
     fun clearError() = _state.update { it.copy(error = null) }
     fun consumeImpersonation() = _state.update { it.copy(impersonation = null) }
+
+    private fun scripts(): List<RegexScript> = if (settings().regexEnabled) regex() else emptyList()
+
+    private fun placementOf(m: ChatMessage) = if (m.isUser) Placement.USER_INPUT else Placement.AI_OUTPUT
+
+    private fun regexed(text: String, placement: Int, params: RegexParams): String {
+        val sc = scripts()
+        if (sc.isEmpty() || text.isEmpty()) return text
+        return RegexEngine.apply(text, placement, sc, params.copy(macros = { Macros.expand(it, host.macroContext()) }))
+    }
+
+    /** Text as shown in the chat bubble: markdown-only scripts applied, stored text untouched. */
+    fun displayText(m: ChatMessage): String = regexed(m.text, placementOf(m), RegexParams(isMarkdown = true))
+
+    /** Reasoning text as shown (REASONING placement). */
+    fun displayReasoning(text: String): String = regexed(text, Placement.REASONING, RegexParams(isMarkdown = true))
 
     /** Entry point for the input box: `/commands` run through the command engine, anything else is sent as chat. */
     fun submit(text: String) {
@@ -194,7 +213,7 @@ class ChatController(
             card = character.card, persona = persona, preset = s.activePreset, history = history,
             maxContextTokens = profile.sampler.maxContextTokens, maxResponseTokens = profile.sampler.maxResponseTokens,
             counter = counterFor(profile.type), promptManager = s.activePromptManager,
-            systemPrompt = if (profile.type.usesTextPrompt) s.activeSystemPrompt else null, vars = variableStore(),
+            systemPrompt = if (profile.type.usesTextPrompt) s.activeSystemPrompt else null, vars = variableStore(), regexScripts = scripts(),
         )
         val req = makeRequest(input, profile, s)
         val backend = backendFor(profile.type)
@@ -218,7 +237,7 @@ class ChatController(
     fun send(text: String) {
         if (text.isBlank() || _state.value.generating) return
         val persona = settings().activePersona.name
-        mutate { it + ChatMessage.user(persona, text.trim()) }
+        mutate { it + ChatMessage.user(persona, regexed(text.trim(), Placement.USER_INPUT, RegexParams()).ifBlank { text.trim() }) }
         generateNew()
     }
 
@@ -255,7 +274,7 @@ class ChatController(
 
     fun edit(index: Int, text: String) {
         if (_state.value.generating) return
-        mutate { it.toMutableList().also { l -> l.getOrNull(index)?.let { m -> l[index] = m.withText(text) } } }
+        mutate { it.toMutableList().also { l -> l.getOrNull(index)?.let { m -> l[index] = m.withText(regexed(text, placementOf(m), RegexParams(isEdit = true))) } } }
     }
 
     fun delete(index: Int) {
@@ -294,7 +313,7 @@ class ChatController(
             promptManager = s.activePromptManager,
             // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
             systemPrompt = if (textMode) s.activeSystemPrompt else null,
-            vars = variableStore(),
+            vars = variableStore(), regexScripts = scripts(),
         )
         // Re-rolls of an existing reply must not advance sticky/cooldown timers.
         val dryRun = trigger != "normal"
@@ -338,7 +357,7 @@ class ChatController(
                 withContext(NonCancellable) {
                     if (targetIndex != null) {
                         if (messages.getOrNull(targetIndex)?.text.isNullOrEmpty()) dropEmptyTarget(targetIndex)
-                        else setTargetText(targetIndex, messages[targetIndex].text.trimEnd())
+                        else setTargetText(targetIndex, regexed(messages[targetIndex].text.trimEnd(), Placement.AI_OUTPUT, RegexParams()))
                     }
                     persist()
                     _state.update { it.copy(generating = false, error = failure) }
