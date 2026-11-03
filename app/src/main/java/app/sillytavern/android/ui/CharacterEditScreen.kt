@@ -25,7 +25,7 @@ import coil.compose.AsyncImage
 import java.io.ByteArrayOutputStream
 
 /** Decode an image, downscale to at most 512x768, and re-encode as PNG for use as an avatar. */
-private fun toAvatarPng(bytes: ByteArray): ByteArray {
+internal fun toAvatarPng(bytes: ByteArray): ByteArray {
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     var sample = 1

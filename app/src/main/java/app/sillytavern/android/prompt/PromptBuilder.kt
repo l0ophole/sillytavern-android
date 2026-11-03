@@ -65,7 +65,7 @@ object PromptBuilder {
             "description" to x(i.card.description),
             "personality" to if (i.card.personality.isBlank()) "" else x(pm.personalityFormat),
             "scenario" to if (i.card.scenario.isBlank()) "" else x(pm.scenarioFormat),
-            "persona" to x(i.persona.description),
+            "persona" to x(PromptSupport.personaText(i)),
             "wiBefore" to i.worldInfo.before, "wiAfter" to i.worldInfo.after,
             "anchorBefore" to PromptSupport.anchor(i, ExtensionPrompt.BEFORE_PROMPT, ::x), "anchorAfter" to PromptSupport.anchor(i, ExtensionPrompt.IN_PROMPT, ::x),
         )

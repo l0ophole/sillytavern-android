@@ -52,6 +52,15 @@ class WorldRepositoryTest {
         val c = card(""","extensions":{"world":"G"}""")
         assertEquals(listOf("G.1"), ids(WorldInfoSources.resolve(c, "ann", null, settings(listOf("G")), repo)))
     }
+    @Test fun personaBookComesAfterChatBookAndBeforeGlobal() {
+        book("Chat", e(1)); book("P", e(2)); book("G", e(3))
+        assertEquals(listOf("Chat.1", "P.2", "G.3"), ids(WorldInfoSources.resolve(card(), "ann", "Chat", settings(listOf("G")), repo, "P")))
+    }
+    @Test fun personaBookAlreadyGlobalIsNotDuplicated() {
+        book("G", e(3))
+        assertEquals(listOf("G.3"), ids(WorldInfoSources.resolve(card(), "ann", null, settings(listOf("G")), repo, "G")).distinct())
+        assertEquals(1, WorldInfoSources.resolve(card(), "ann", null, settings(listOf("G")), repo, "G").size)
+    }
     @Test fun resolveStrategyOrders() {
         book("G", e(1, order = 10), e(2, order = 90)); book("C", e(3, order = 50))
         val c = card(""","extensions":{"world":"C"}""")

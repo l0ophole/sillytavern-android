@@ -71,12 +71,9 @@ class ChatController(
 
     fun open(character: StoredCharacter, chatFile: File? = null) {
         stop(); stopAuto()
-        val s = settings()
-        val loaded = when {
-            chatFile != null -> repo.load(chatFile)
-            else -> repo.list(character.fileName).firstOrNull()?.let(repo::load)
-                ?: createChat(character, s.activePersona.name)
-        }
+        val existing = (chatFile ?: repo.list(character.fileName).firstOrNull())?.let(repo::load)
+        applyPersonaFor(existing, character.fileName)
+        val loaded = existing ?: createChat(character, settings().activePersona.name)
         _state.value = ChatUiState(character = character, chat = loaded)
         fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
     }
@@ -291,7 +288,7 @@ class ChatController(
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
         override suspend fun switchPersona(name: String): Boolean {
             val p = settings().personas.firstOrNull { it.name.equals(name, true) } ?: return false
-            updateSettings { it.copy(activePersonaId = p.id) }
+            selectPersona(p.id)
             return true
         }
         override suspend fun groupMembers(): List<GroupMemberInfo>? = group?.let { g ->
@@ -332,6 +329,48 @@ class ChatController(
         return out.toString().trim()
     }
 
+    // ---------------------------------------------------------------- personas
+
+    /** Switches the active persona to the chat's lock, the character's lock or the default persona (if any applies). */
+    private fun applyPersonaFor(chat: Chat?, characterFile: String?) {
+        val target = PersonaLock.resolve(settings(), chat?.let { ChatMeta.string(ChatMeta.of(it), ChatMeta.PERSONA) }, characterFile) ?: return
+        if (target != settings().activePersona.id) updateSettings { it.copy(activePersonaId = target) }
+    }
+
+    /** Selects a persona by hand; with auto-lock on, the open chat is locked to it. */
+    fun selectPersona(id: String) {
+        if (settings().personas.none { it.id == id }) return
+        updateSettings { it.copy(activePersonaId = id) }
+        if (settings().personaAutoLock && chat != null) lockPersona(chatLock = true)
+    }
+
+    /** Locks the active persona to the open chat, or to the open character ([chatLock] false). */
+    fun lockPersona(chatLock: Boolean) {
+        val p = settings().activePersona
+        if (chatLock) {
+            val cur = chat ?: return
+            _state.update { it.copy(chat = ChatMeta.with(cur, ChatMeta.PERSONA, kotlinx.serialization.json.JsonPrimitive(p.id))) }
+            persist()
+        } else {
+            val f = if (group == null) _state.value.character?.fileName ?: return else return
+            updateSettings { it.copy(personas = PersonaLock.lockCharacter(it.personas, p.id, f)) }
+        }
+    }
+
+    fun unlockPersona(chatLock: Boolean) {
+        if (chatLock) {
+            val cur = chat ?: return
+            _state.update { it.copy(chat = ChatMeta.with(cur, ChatMeta.PERSONA, null)) }
+            persist()
+        } else {
+            val f = if (group == null) _state.value.character?.fileName ?: return else return
+            updateSettings { it.copy(personas = PersonaLock.unlockCharacter(it.personas, f)) }
+        }
+    }
+
+    fun isChatLocked(): Boolean = ChatMeta.string(chatMeta(), ChatMeta.PERSONA) == settings().activePersona.id
+    fun isCharacterLocked(): Boolean = group == null && _state.value.character?.fileName?.let { it in settings().activePersona.characters } == true
+
     // ---------------------------------------------------------------- author's note + summary
 
     /** Prompts contributed by the Author's Note and the chat summary for a generation over [history]. */
@@ -344,7 +383,9 @@ class ChatController(
             if (group == null) character?.let { s.characterNotes[it.fileName] } else null,
             persona.description, persona.position,
         )
-        return listOfNotNull(Summary.extensionPrompt(history, s.summary), note)
+        val depthPersona = persona.description.takeIf { it.isNotBlank() && persona.position == 4 }
+            ?.let { ExtensionPrompt("persona", it, ExtensionPrompt.IN_CHAT, persona.depth, persona.role) }
+        return listOfNotNull(Summary.extensionPrompt(history, s.summary), depthPersona, note)
     }
 
     /** Author's Note of the open chat (chat metadata, with global defaults). */
@@ -482,7 +523,7 @@ class ChatController(
         // Re-rolls of an existing reply must not advance sticky/cooldown timers.
         val dryRun = trigger != "normal"
         val worldInfoInput = worlds?.let { w ->
-            val entries = WorldInfoSources.resolve(character.card, character.fileName, WorldInfoRunner.chatBookOf(chat), s, w)
+            val entries = WorldInfoSources.resolve(character.card, character.fileName, WorldInfoRunner.chatBookOf(chat), s, w, s.activePersona.lorebook)
             val (prompt, timed) = WorldInfoRunner.run(entries, history, input, s.worldInfo, trigger, WorldInfoRunner.timedOf(chat), dryRun)
             if (!dryRun && entries.isNotEmpty()) _state.update { st -> st.copy(chat = st.chat?.let { WorldInfoRunner.withTimed(it, timed) }) }
             input.copy(worldInfo = prompt)
@@ -615,7 +656,9 @@ class ChatController(
         val g = if (chatId != null && chatId != group.chatId) group.copy(chatId = chatId, chats = (group.chats + chatId).distinct()).also(gr::save) else group
         val members = resolveMembers(g)
         val file = gr.chatFile(g.chatId)
-        val loaded = if (file.exists()) repo.load(file) else repo.createGroupChat(file, groupGreetings(g, members))
+        val existing = if (file.exists()) repo.load(file) else null
+        applyPersonaFor(existing, null)
+        val loaded = existing ?: repo.createGroupChat(file, groupGreetings(g, members))
         _state.value = ChatUiState(character = members.firstOrNull(), chat = loaded, group = g, members = members)
         fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
     }

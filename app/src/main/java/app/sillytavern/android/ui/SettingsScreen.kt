@@ -38,10 +38,13 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             Spacer(Modifier.height(16.dp))
             SectionHeader("Personas") { editPersona = Persona(name = "") }
             s.personas.forEach { p ->
-                ItemRow(p.name, p.description.take(60), p.id == s.activePersona.id,
-                    onSelect = { c.settings.update { it.copy(activePersonaId = p.id) } },
+                ItemRow(p.name + if (p.id == s.defaultPersonaId) "  ★" else "", p.title.ifBlank { p.description.take(60) }, p.id == s.activePersona.id,
+                    onSelect = { c.chatController.selectPersona(p.id) },
                     onEdit = { editPersona = p },
-                    onDelete = if (s.personas.size > 1) ({ c.settings.update { it.copy(personas = it.personas - p) } }) else null)
+                    onDelete = if (s.personas.size > 1) ({
+                        c.settings.update { st -> st.copy(personas = st.personas - p, defaultPersonaId = st.defaultPersonaId.takeIf { it != p.id }, activePersonaId = st.activePersonaId.takeIf { it != p.id }) }
+                    }) else null,
+                    leading = { PersonaAvatar(c, p, 36) })
             }
             Spacer(Modifier.height(16.dp))
             Text("Prompts", style = MaterialTheme.typography.titleLarge)
@@ -76,21 +79,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
         }
     }
     editConn?.let { ConnectionDialog(c, it) { editConn = null } }
-    editPersona?.let { p ->
-        var name by remember { mutableStateOf(p.name) }
-        var desc by remember { mutableStateOf(p.description) }
-        AlertDialog(
-            onDismissRequest = { editPersona = null }, title = { Text("Persona") },
-            text = { Column { Field("Name", name, { name = it }); Field("Description", desc, { desc = it }, singleLine = false, minLines = 3) } },
-            confirmButton = {
-                TextButton(enabled = name.isNotBlank(), onClick = {
-                    val np = p.copy(name = name.trim(), description = desc)
-                    c.settings.update { st -> st.copy(personas = if (st.personas.any { it.id == p.id }) st.personas.map { if (it.id == p.id) np else it } else st.personas + np) }
-                    editPersona = null
-                }) { Text("Save") }
-            },
-            dismissButton = { TextButton(onClick = { editPersona = null }) { Text("Cancel") } })
-    }
+    editPersona?.let { p -> PersonaEditDialog(c, p) { editPersona = null } }
 }
 
 @Composable
@@ -101,9 +90,11 @@ private fun SectionHeader(title: String, onAdd: () -> Unit) =
     }
 
 @Composable
-private fun ItemRow(title: String, subtitle: String, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)?) =
+private fun ItemRow(title: String, subtitle: String, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)?, leading: @Composable () -> Unit = {}) =
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected, onSelect)
+        leading()
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall)

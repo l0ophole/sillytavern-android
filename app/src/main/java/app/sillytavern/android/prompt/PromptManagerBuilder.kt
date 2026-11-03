@@ -51,6 +51,9 @@ internal object PromptSupport {
     fun anchor(i: PromptInput, position: Int, x: (String) -> String): String =
         i.extensionPrompts.filter { it.position == position }.map { x(it.content) }.filter { it.isNotBlank() }.joinToString("\n")
 
+    /** Persona description for the prompt body: only the in-prompt positions (0 and the legacy 1) put it there. */
+    fun personaText(i: PromptInput): String = if (i.persona.position == 0 || i.persona.position == 1) i.persona.description else ""
+
     fun roleOf(r: Int) = when (r) { 1 -> Role.USER; 2 -> Role.ASSISTANT; else -> Role.SYSTEM }
 
     fun mergeInjections(a: Map<Int, List<PromptMessage>>, b: Map<Int, List<PromptMessage>>): Map<Int, List<PromptMessage>> =
@@ -97,7 +100,7 @@ object PromptManagerBuilder {
             "charDescription" -> i.card.description
             "charPersonality" -> if (i.card.personality.isBlank()) "" else pm.personalityFormat
             "scenario" -> if (i.card.scenario.isBlank()) "" else pm.scenarioFormat
-            "personaDescription" -> i.persona.description
+            "personaDescription" -> PromptSupport.personaText(i)
             "dialogueExamples" -> (i.worldInfo.exampleTop +
                 listOfNotNull(i.card.messageExample.takeIf { it.isNotBlank() }?.let { "${pm.newExampleChatPrompt}\n$it" }) +
                 i.worldInfo.exampleBottom).joinToString("\n")

@@ -110,6 +110,10 @@ data class AppSettings(
     val activeConnectionId: String? = null,
     val personas: List<Persona> = listOf(Persona()),
     val activePersonaId: String? = null,
+    /** Persona used for chats that are not locked (SillyTavern's default persona). */
+    val defaultPersonaId: String? = null,
+    /** Lock the chat to a persona whenever it is selected manually. */
+    val personaAutoLock: Boolean = false,
     val presets: List<PromptPreset> = listOf(PromptPreset()),
     val activePresetId: String? = null,
     // --- Prompt engine (feature set 2); presets are identified by name, as in SillyTavern ---

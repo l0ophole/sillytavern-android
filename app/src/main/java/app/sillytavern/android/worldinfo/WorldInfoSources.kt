@@ -8,15 +8,17 @@ import kotlinx.serialization.json.*
 object WorldInfoSources {
     fun resolve(
         card: CharacterCard, characterFileName: String, chatBook: String?, settings: AppSettings, repo: WorldBookRepository,
+        personaBook: String? = null,
     ): List<ScanEntry> {
         fun entriesOf(book: WorldBook) = book.entries.map { ScanEntry(book.name, it) }.sortedByDescending { it.entry.order }
         fun load(name: String) = repo.load(name)?.let(::entriesOf).orEmpty()
 
         val chat = chatBook?.takeIf { it.isNotBlank() }
-        val global = settings.globalWorldBooks.distinct().filter { it != chat }
+        val persona = personaBook?.takeIf { it.isNotBlank() && it != chat }
+        val global = settings.globalWorldBooks.distinct().filter { it != chat && it != persona }
         val attached = ((card.raw["extensions"] as? JsonObject)?.get("world") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
         val charBooks = (listOfNotNull(attached) + settings.characterExtraBooks[characterFileName].orEmpty()).distinct()
-            .filter { it !in global && it != chat }
+            .filter { it !in global && it != chat && it != persona }
 
         val chatLore = chat?.let(::load).orEmpty()
         val globalLore = global.flatMap(::load)
@@ -27,7 +29,7 @@ object WorldInfoSources {
             2 -> globalLore.sortedByDescending { it.entry.order } + charLore.sortedByDescending { it.entry.order }
             else -> charLore.sortedByDescending { it.entry.order } + globalLore.sortedByDescending { it.entry.order }
         }
-        return (chatLore + mid).filter { passesCharacterFilter(it.entry, characterFileName, card.tags) }
+        return (chatLore + persona?.let(::load).orEmpty() + mid).filter { passesCharacterFilter(it.entry, characterFileName, card.tags) }
     }
 
     /** A card's own `character_book` counts only when no world book is attached (importing it replaces it). */

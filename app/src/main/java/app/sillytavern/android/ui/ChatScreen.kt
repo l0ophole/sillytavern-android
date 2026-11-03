@@ -36,6 +36,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     var showBook by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    var showPersona by remember { mutableStateOf(false) }
     var showQrSet by remember { mutableStateOf(false) }
     val appSettings by c.settings.settings.collectAsState()
     val bar = remember(appSettings, state.chat?.file, state.character) { c.quickReplies.bar() }
@@ -70,6 +71,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                             DropdownMenuItem({ Text("Regenerate") }, { menu = false; ctl.regenerate() })
                             DropdownMenuItem({ Text("Continue") }, { menu = false; ctl.continueLast() })
                             DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
+                            DropdownMenuItem({ Text("Persona… (${appSettings.activePersona.name})") }, { menu = false; showPersona = true })
                             DropdownMenuItem({ Text("Chat lorebook…") }, { menu = false; showBook = true })
                             DropdownMenuItem({ Text("Chat quick reply set…") }, { menu = false; showQrSet = true })
                             val grp = state.group
@@ -153,6 +155,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             confirmButton = { TextButton(onClick = { ctl.setChatQuickReplySet(sel); showQrSet = false }) { Text("OK") } },
             dismissButton = { TextButton(onClick = { showQrSet = false }) { Text("Cancel") } })
     }
+    if (showPersona) PersonaLockDialog(c) { showPersona = false }
     if (showChats) ChatListDialog(c, onDismiss = { showChats = false })
     if (showBook) {
         val names = remember { c.worlds.list() }
