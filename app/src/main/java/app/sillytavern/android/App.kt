@@ -52,6 +52,7 @@ class AppContainer(app: Application) {
     val webSearch = WebSearchService({ settings.settings.value.tools.search }, { secrets.get(ToolsSettings.KEY_SEARCH) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
+    fun tokenizer(kind: TokenizerKind): app.sillytavern.android.prompt.TokenCounter = if (kind == TokenizerKind.OPENAI) tiktoken else ApproxTokenCounter
 
     val chatController: ChatController = ChatController(
         repo = chats,

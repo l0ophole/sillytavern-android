@@ -159,6 +159,10 @@ fun CharacterListScreen(
             }
             if (shown.isEmpty()) {
                 Text(if (entries.isEmpty()) "No characters yet. Import a card (PNG/JSON) or tap +." else "No matches.", Modifier.padding(top = 24.dp))
+                if (entries.isEmpty()) TextButton(onClick = {
+                    message = runCatching { c.defaultContent.installStarter(); "Installed Seraphina and the Eldoria world" }.getOrElse { "Install failed: ${it.message}" }
+                    reload()
+                }) { Text(tr("Install the default character")) }
             }
             LazyColumn {
                 items(shown, key = { it.key }) { e ->

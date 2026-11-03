@@ -238,3 +238,25 @@ See docs/ROADMAP.md.
 - Nothing ran on a device/emulator: document/sprite pickers, sprite panel, the settings screen
 - `RemoteEmbedder` was tested only against MockWebServer, request shapes from the services' documentation; no real embedding server; recall quality of the hashing embedder on real chats is unmeasured
 - Not built: web/YouTube/Fandom scraping into the Data Bank, PDF/EPUB/HTML extraction, sprite zip import, image-based classification, talking-head/VRM/Live2D, per-message sprite history, HNSW/ANN, `/db` commands
+
+
+## Done (feature set 11: utilities) — plan: docs/plans/10-utilities.md
+- Translation (`tools/Translate.kt`): providers Google (free gtx endpoint), LibreTranslate, DeepL, or the main connection; auto mode off / replies / your messages / both. Like ST, translations are display-only: `extra.display_text` is shown while `mes` stays what the model reads; with input translation your message is translated into the internal language and the typed text becomes its display text. `display_text_for` (hash of `mes`) drops a stale translation after an edit or swipe. Message action "Translate / Show original", `/translate [to=code] text`; long text is split at paragraph/line/sentence ends (3500 chars); a failure only shows a notice
+- Web search (`tools/WebSearch.kt`): SearXNG (JSON), Brave, Tavily, Serper; the newest user message (optionally only when it contains a trigger word) is searched during generation and the numbered results go in as a templated extension prompt (`{{query}}`, `{{text}}`, depth/role); `/websearch query` (`/search`); a failing search only shows a notice
+- Content manager (`tools/Assets.kt`, `tools/DefaultContent.kt`): catalog JSON (array, `{assets:[…]}` or ST's `{category:[…]}`) listed and installed one entry at a time into backgrounds, characters, worlds or `themes/` (http/https only, 25 MB cap, themes must parse); default content bundled in `assets/default-content/` (Seraphina card, Eldoria world, five ST themes) with install / apply buttons, plus an "Install the default character" button on an empty character list
+- Statistics (`tools/Stats.kt`): per character and group chats, messages, words, averages, extra swipes, date range, total
+- Token counter (`tools/TokenTools.kt`): free text with OpenAI o200k or estimate; token cost per card field, the whole card and the chat lines that go into prompts
+- UI: Settings entries "Translation & web search", "Content manager", "Token counter", "Statistics" (`ui/ToolsScreens.kt`)
+- Verification: 787 JVM unit tests pass (33 new), lint 0 issues, debug APK builds
+
+## Rulings / deviations (set 11)
+- Executed on `main`, native, no subagents; UI tasks compile + lint only
+- Translation keys and search keys use the secret store (`tools:translate`, `tools:search`); Google uses the unofficial `translate.googleapis.com` endpoint that ST also uses (no key, may be rate limited)
+- Translating the page contents behind search results is not done (ST can scrape pages); only the provider's snippets are used
+- Bundled content is limited to the card, world and themes (the 18 ST backgrounds are 11 MB); backgrounds can come from a catalog
+- Themes are stored in `themes/` and applied through the existing importer; applying keeps your language, background and rendering choices
+
+## Not verified (set 11)
+- Nothing ran on a device/emulator: the four screens, the Seraphina install from the character list, theme apply
+- HTTP clients are tested against MockWebServer with request shapes from the services' documentation; no real Google/DeepL/LibreTranslate/SearXNG/Brave/Tavily/Serper calls
+- Not built: Google Cloud/Azure/Bing/Yandex/Lingva translators, DuckDuckGo/Kagi/SerpApi search, page scraping, ambient/bgm/live2d/vrm asset types, per-model tokenizers other than OpenAI, time-spent statistics

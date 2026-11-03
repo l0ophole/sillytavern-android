@@ -60,8 +60,12 @@ private fun AppNav(c: AppContainer) {
                 onWorlds = { nav.navigate("worlds") },
                 onQuickReplies = { nav.navigate("quickreplies") }, onRegex = { nav.navigate("regex") },
                 onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") },
-                onMedia = { nav.navigate("media") }, onGallery = { nav.navigate("gallery") }, onMemory = { nav.navigate("memory") })
+                onMedia = { nav.navigate("media") }, onGallery = { nav.navigate("gallery") }, onMemory = { nav.navigate("memory") }, onTools = { nav.navigate(it) })
         }
+        composable("tools") { ToolsScreen(c, onBack = { nav.popBackStack() }) }
+        composable("content") { ContentScreen(c, onBack = { nav.popBackStack() }) }
+        composable("tokens") { TokenScreen(c, onBack = { nav.popBackStack() }) }
+        composable("stats") { StatsScreen(c, onBack = { nav.popBackStack() }) }
         composable("memory") { MemoryScreen(c, onBack = { nav.popBackStack() }) }
         composable("media") { MediaSettingsScreen(c, onBack = { nav.popBackStack() }) }
         composable("gallery") { GalleryFoldersScreen(c, onOpen = { nav.navigate("gallery/${android.net.Uri.encode(it)}") }, onBack = { nav.popBackStack() }) }

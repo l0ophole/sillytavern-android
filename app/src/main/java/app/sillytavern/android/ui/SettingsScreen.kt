@@ -19,7 +19,7 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit, onTags: () -> Unit = {}, onAppearance: () -> Unit = {}, onMedia: () -> Unit = {}, onGallery: () -> Unit = {}, onMemory: () -> Unit = {}) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit, onTags: () -> Unit = {}, onAppearance: () -> Unit = {}, onMedia: () -> Unit = {}, onGallery: () -> Unit = {}, onMemory: () -> Unit = {}, onTools: (String) -> Unit = {}) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
@@ -30,6 +30,10 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             TextButton(onClick = onMedia) { Text(tr("Speech, images & attachments")) }
             TextButton(onClick = onGallery) { Text(tr("Gallery")) }
             TextButton(onClick = onMemory) { Text(tr("Memory, data bank & expressions")) }
+            TextButton(onClick = { onTools("tools") }) { Text(tr("Translation & web search")) }
+            TextButton(onClick = { onTools("content") }) { Text(tr("Content manager")) }
+            TextButton(onClick = { onTools("tokens") }) { Text(tr("Token counter")) }
+            TextButton(onClick = { onTools("stats") }) { Text(tr("Statistics")) }
             SectionHeader(tr("Connections")) { editConn = ConnectionProfile() }
             if (s.connections.isEmpty()) Text("No connections. Tap Add to configure an API.", Modifier.padding(vertical = 8.dp))
             s.connections.forEach { p ->

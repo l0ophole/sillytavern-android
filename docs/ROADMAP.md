@@ -14,7 +14,7 @@ Sets are small and ordered by dependency. Each set gets a plan in docs/plans/ be
 | 8 | Appearance (DONE) | themes, backgrounds, avatar styles, markdown/HTML rendering, i18n, moving UI, tablet layout | 1 | - |
 | 9 | Media extensions (DONE) | TTS (system + cloud), STT, image gen (A1111/Comfy/NovelAI), gallery, attachments, captioning (remote) | 7 | - |
 | 10 | Local ML (DONE, no ONNX) | embeddings + vector memory/data bank, expression classifier/sprites, ONNX Runtime Mobile | 7 | - |
-| 11 | Utilities | translate, web search, assets/content manager, default content, token counter UI, stats | 2 | - |
+| 11 | Utilities (DONE) | translate, web search, assets/content manager, default content, token counter UI, stats | 2 | - |
 | 12 | Extensions | extension system (Kotlin-defined + QuickJS scripting for third-party JS - decision pending) | 5 | - |
 | 13 | Data & accounts | backups/restore, data maid, multi-user, optional passcode, SAF-based full export | 1 | - |
 | 14 | Android polish | foreground service/notifications, widgets, share-target import, background generation, battery/memory tuning | 1 | - |
