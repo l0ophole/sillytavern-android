@@ -33,6 +33,11 @@ class CharacterRepository(private val paths: StoragePaths) {
         return save(null, card, bytes.takeIf { PngChunks.isPng(it) })
     }
 
+    fun setFav(fileName: String, fav: Boolean) {
+        val c = get(fileName) ?: return
+        save(fileName, c.card.withFav(fav))
+    }
+
     fun exportPng(fileName: String): ByteArray = fileFor(fileName).readBytes()
 
     fun exportJson(fileName: String): String = CardCodec.toJson(requireNotNull(get(fileName)).card)

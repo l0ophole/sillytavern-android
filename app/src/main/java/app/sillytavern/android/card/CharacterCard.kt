@@ -22,6 +22,22 @@ data class CharacterCard(
     val characterVersion: String = "",
     val raw: JsonObject = JsonObject(emptyMap()),
 ) {
+    private fun extra(key: String): JsonPrimitive? =
+        ((raw["extensions"] as? JsonObject)?.get(key) as? JsonPrimitive) ?: raw[key] as? JsonPrimitive
+
+    /** Favorite flag (`extensions.fav`; V1 cards may store the string "true"). */
+    val fav: Boolean get() = extra("fav")?.let { it.booleanOrNull ?: (it.contentOrNull == "true") } ?: false
+
+    /** How eager the character is to speak in natural-order group chats, 0..1 (default 0.5). */
+    val talkativeness: Double get() = (extra("talkativeness")?.doubleOrNull ?: 0.5).takeIf { !it.isNaN() }?.coerceIn(0.0, 1.0) ?: 0.5
+
+    private fun withExtension(key: String, value: JsonElement): CharacterCard {
+        val ext = JsonObject(((raw["extensions"] as? JsonObject) ?: JsonObject(emptyMap())) + (key to value))
+        return copy(raw = JsonObject(raw + ("extensions" to ext)))
+    }
+    fun withFav(f: Boolean) = withExtension("fav", JsonPrimitive(f))
+    fun withTalkativeness(t: Double) = withExtension("talkativeness", JsonPrimitive(t.coerceIn(0.0, 1.0)))
+
     /** Greetings the user can pick from: first message then alternates. */
     val greetings get() = (listOf(firstMessage) + alternateGreetings).filter { it.isNotBlank() }
 }
