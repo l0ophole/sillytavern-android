@@ -51,6 +51,10 @@ interface CommandHost {
     /** Generates an image (see ChatController.generateImage); returns its stored path. */
     suspend fun drawImage(subject: String, quiet: Boolean, negative: String?): String = unavailable()
     suspend fun caption(mesId: Int?, prompt: String?): String = unavailable()
+    /** Shows the sprite for [label] (false when the speaker has no such label). */
+    suspend fun setExpression(label: String): Boolean = unavailable()
+    fun expressionLabels(): List<String> = emptyList()
+    suspend fun classifyExpression(text: String): String = unavailable()
     fun currentSummary(): String = ""
     suspend fun createBranch(mesId: Int): String? = unavailable()
     suspend fun createCheckpoint(mesId: Int, name: String?): String? = unavailable()

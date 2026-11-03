@@ -76,6 +76,17 @@ object ChatCommands {
         cmd("caption", help = "caption [mes=N] [prompt] - captions the image of a message (default: the newest image) with the main model; returns the caption.", usesPipe = false) { c ->
             c.host.caption(c.named["mes"]?.trim()?.toIntOrNull(), c.unnamed.takeIf { it.isNotBlank() })
         }
+        cmd("sprite", "emote", help = "sprite label - shows the sprite (expression) with that label for the current character.", usesPipe = false) { c ->
+            val label = c.unnamed.trim()
+            if (!c.host.setExpression(label)) throw CommandError("No expression \"$label\". Available: ${c.host.expressionLabels().joinToString(", ")}")
+            label.lowercase()
+        }
+        cmd("expression-list", help = "Returns the expression labels of the current character (comma separated).", usesPipe = false) { c ->
+            c.host.expressionLabels().joinToString(",")
+        }
+        cmd("expression-classify", "classify", help = "expression-classify text - returns the expression label the classifier picks for the text.", usesPipe = false) { c ->
+            c.host.classifyExpression(c.unnamed)
+        }
         cmd("getsummary", help = "Returns the current chat summary.", usesPipe = false) { c -> c.host.currentSummary() }
         cmd("branch-create", help = "branch-create [mesId] - copies the chat up to a message into a new branch and opens it; returns its name.", usesPipe = false) { c ->
             c.host.createBranch(mesId(c)).orEmpty()

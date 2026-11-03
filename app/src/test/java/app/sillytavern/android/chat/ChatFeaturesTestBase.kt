@@ -19,9 +19,12 @@ open class ChatFeaturesTestBase {
     var cfg = AppSettings(connections = listOf(ConnectionProfile(name = "c")))
     val requests = mutableListOf<GenerationRequest>()
     var reply = "reply"
-    val backend = Backend { req -> requests += req; flow { emit(reply) } }
+    /** Replies served first (in order) before falling back to [reply]. */
+    val queuedReplies = ArrayDeque<String>()
+    val backend = Backend { req -> requests += req; flow { emit(queuedReplies.removeFirstOrNull() ?: reply) } }
 
     /** Set before calling [controller] to enable vector memory / Data Bank. */
+    var spriteRepo: app.sillytavern.android.memory.SpriteRepository? = null
     var memoryService: app.sillytavern.android.memory.MemoryService? = null
 
     fun TestScope.controller(): ChatController = ChatController(
@@ -30,6 +33,7 @@ open class ChatFeaturesTestBase {
         updateSettings = { f -> cfg = f(cfg) },
         mediaRoot = paths.root,
         memory = memoryService,
+        sprites = spriteRepo,
     )
 
     fun lastContents() = requests.last().messages.map { it.content }

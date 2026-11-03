@@ -44,6 +44,7 @@ class AppContainer(app: Application) {
     val memory = MemoryService(
         paths, { settings.settings.value.memory }, { secrets.get(MemorySettings.KEY_EMBEDDINGS) },
     )
+    val sprites = SpriteRepository(paths.sprites)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
@@ -61,6 +62,7 @@ class AppContainer(app: Application) {
         mediaRoot = paths.root,
         mediaKey = { secrets.get(it) },
         memory = memory,
+        sprites = sprites,
     )
 
     val quickReplies = QuickReplyService(

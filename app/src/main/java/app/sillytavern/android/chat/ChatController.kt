@@ -48,6 +48,8 @@ data class ChatUiState(
     val pendingFile: app.sillytavern.android.media.FileAttachment? = null,
     /** A caption or image is being produced. */
     val mediaBusy: Boolean = false,
+    /** Expression label of the latest character message (set by the classifier or `/sprite`); null = none yet. */
+    val expression: String? = null,
 )
 
 /**
@@ -77,6 +79,8 @@ class ChatController(
     private val mediaKey: (String) -> String? = { null },
     /** Vector memory and Data Bank retrieval (set 10); null disables them. */
     private val memory: app.sillytavern.android.memory.MemoryService? = null,
+    /** Sprite folders, used to offer only labels the character has images for. */
+    val sprites: app.sillytavern.android.memory.SpriteRepository? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -90,7 +94,7 @@ class ChatController(
         val existing = (chatFile ?: repo.list(character.fileName).firstOrNull())?.let(repo::load)
         applyPersonaFor(existing, character.fileName)
         val loaded = existing ?: createChat(character, settings().activePersona.name)
-        _state.value = ChatUiState(character = character, chat = loaded)
+        _state.value = ChatUiState(character = character, chat = loaded, expression = initialExpression(loaded.messages))
         fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
     }
 
@@ -307,6 +311,9 @@ class ChatController(
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
         override suspend fun drawImage(subject: String, quiet: Boolean, negative: String?): String = generateImage(subject, quiet, negative)
         override suspend fun speak(text: String, voice: String?) { speakText(text, voice) }
+        override suspend fun setExpression(label: String): Boolean = chooseExpression(label)
+        override fun expressionLabels(): List<String> = expressionLabelsFor()
+        override suspend fun classifyExpression(text: String): String = classifyText(text)
         override suspend fun caption(mesId: Int?, prompt: String?): String = captionMessage(mesId ?: messages.indexOfLast { it.imagePath != null }, prompt)
         override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
         override fun currentSummary(): String = summaryText()
@@ -885,10 +892,56 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = batch, error = failure) }
-                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
+                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); updateExpression(targetIndex); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
                 }
             }
         }
+    }
+
+    // ---------------------------------------------------------------- expressions
+
+    private fun spriteOwner(): String? = messages.lastOrNull { !it.isUser && !it.isSystem }?.name ?: _state.value.character?.card?.name
+
+    /** Keyword-classified expression of the newest character line when a chat is opened (no model call). */
+    private fun initialExpression(msgs: List<ChatMessage>): String? {
+        if (!settings().memory.expressions.enabled) return null
+        val last = msgs.lastOrNull { !it.isUser && !it.isSystem && it.text.isNotBlank() } ?: return settings().memory.expressions.fallback
+        return app.sillytavern.android.memory.KeywordClassifier.classifyNow(last.text)
+    }
+
+    /** Labels the open speaker has sprites for, or the classifier's default list. */
+    fun expressionLabelsFor(): List<String> {
+        val owner = spriteOwner()
+        val own = if (owner != null) sprites?.labels(owner).orEmpty() else emptyList()
+        return own.ifEmpty { app.sillytavern.android.memory.ExpressionLabels.DEFAULT }
+    }
+
+    /** Classifies [text] with the classifier selected in the settings. */
+    suspend fun classifyText(text: String): String {
+        val labels = expressionLabelsFor()
+        val fallback = settings().memory.expressions.fallback
+        val label = when (settings().memory.expressions.classifier) {
+            app.sillytavern.android.memory.ClassifierKind.KEYWORD -> app.sillytavern.android.memory.KeywordClassifier.classifyNow(text, labels)
+            app.sillytavern.android.memory.ClassifierKind.LLM ->
+                app.sillytavern.android.memory.LlmClassifier { quietGenerate(it, useHistory = false) }.classify(text, labels)
+        }
+        return label ?: fallback
+    }
+
+    /** Shows [label] for the current speaker; false when it is not one of their labels. */
+    fun chooseExpression(label: String): Boolean {
+        val l = label.trim().lowercase()
+        if (l.isEmpty() || l !in expressionLabelsFor().map { it.lowercase() }) return false
+        _state.update { it.copy(expression = l) }
+        return true
+    }
+
+    /** Classifies the character message at [index] after its generation (failures only leave the old expression). */
+    private suspend fun updateExpression(index: Int) {
+        if (!settings().memory.expressions.let { it.enabled && it.auto }) return
+        val text = messages.getOrNull(index)?.text?.takeIf { it.isNotBlank() } ?: return
+        try { classifyText(text).let { l -> _state.update { it.copy(expression = l) } } }
+        catch (e: CancellationException) { throw e } catch (_: Exception) {}
     }
 
     /** Vector memory / Data Bank prompts; a failing embedding service only produces a notice. */
