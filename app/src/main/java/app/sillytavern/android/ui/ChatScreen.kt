@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -17,6 +18,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import app.sillytavern.android.AppContainer
 import app.sillytavern.android.chat.ChatMessage
+import app.sillytavern.android.quickreply.QuickReplyService
+import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -32,6 +35,10 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     var showChats by remember { mutableStateOf(false) }
     var showBook by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var showQrSet by remember { mutableStateOf(false) }
+    val appSettings by c.settings.settings.collectAsState()
+    val bar = remember(appSettings, state.chat?.file, state.character) { c.quickReplies.bar() }
 
     LaunchedEffect(characterFile) {
         if (state.character?.fileName != characterFile) c.characters.get(characterFile)?.let { ctl.open(it) }
@@ -46,6 +53,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); ctl.clearError() } }
+    LaunchedEffect(state.notice) { state.notice?.let { snackbar.showSnackbar(it); ctl.clearNotice() } }
 
     Scaffold(
         topBar = {
@@ -62,6 +70,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                             DropdownMenuItem({ Text("Continue") }, { menu = false; ctl.continueLast() })
                             DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
                             DropdownMenuItem({ Text("Chat lorebook…") }, { menu = false; showBook = true })
+                            DropdownMenuItem({ Text("Chat quick reply set…") }, { menu = false; showQrSet = true })
                             DropdownMenuItem({ Text("Edit character") }, { menu = false; onEdit(characterFile) })
                         }
                     }
@@ -70,18 +79,33 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
+          Column {
+            if (bar.isNotEmpty()) androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(bar.size) { idx ->
+                    val (set, qr) = bar[idx]
+                    AssistChip(onClick = {
+                        scope.launch {
+                            val o = ctl.pressQuickReply(set, qr, input)
+                            o.error?.let { snackbar.showSnackbar(it) }
+                            o.inputText?.let { input = it }
+                            o.textToSend?.let { input = ""; ctl.submit(it) }
+                        }
+                    }, label = { Text(qr.label.ifBlank { "?" }, maxLines = 1) })
+                }
+            }
             Row(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6)
                 Spacer(Modifier.width(8.dp))
                 if (state.generating) Button(onClick = { ctl.stop() }) { Text("Stop") }
                 else Button(enabled = input.isNotBlank(), onClick = { ctl.submit(input); input = "" }) { Text("Send") }
             }
+          }
         },
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 12.dp), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(messages) { i, m ->
                 MessageBubble(
-                    m, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
+                    m, shown = ctl.displayText(m), shownReasoning = m.reasoning?.let(ctl::displayReasoning), isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
                     onLongPress = { actionsFor = i }, onSwipe = { d -> ctl.swipe(i, d) },
                 )
             }
@@ -113,6 +137,14 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
             dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } },
         )
     }
+    if (showQrSet) {
+        val names = remember { c.quickReplyRepo.list() }
+        var sel by remember { mutableStateOf(ctl.chatQuickReplySet()) }
+        AlertDialog(onDismissRequest = { showQrSet = false }, title = { Text("Quick reply set for this chat") },
+            text = { Pick("Set", listOf("(none)") + names, if (sel == null) 0 else names.indexOf(sel) + 1) { sel = if (it == 0) null else names[it - 1] } },
+            confirmButton = { TextButton(onClick = { ctl.setChatQuickReplySet(sel); showQrSet = false }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { showQrSet = false }) { Text("Cancel") } })
+    }
     if (showChats) ChatListDialog(c, onDismiss = { showChats = false })
     if (showBook) {
         val names = remember { c.worlds.list() }
@@ -127,21 +159,21 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit) {
-    val color = if (m.isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+private fun MessageBubble(m: ChatMessage, shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit) {
+    val color = when { m.isNarrator -> MaterialTheme.colorScheme.tertiaryContainer; m.isUser -> MaterialTheme.colorScheme.primaryContainer; else -> MaterialTheme.colorScheme.surfaceVariant }
     Column(
         Modifier.fillMaxWidth().background(color, RoundedCornerShape(12.dp))
             .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(12.dp),
     ) {
         Text(m.name, style = MaterialTheme.typography.labelMedium)
-        m.reasoning?.let { r ->
+        shownReasoning?.let { r ->
             var open by remember(m.sendDate) { mutableStateOf(false) }
             TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {
                 Text(if (open) "▾ Thinking" else "▸ Thinking…", style = MaterialTheme.typography.labelMedium)
             }
             if (open) Text(r, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
         }
-        Text(if (m.text.isEmpty() && generating) "…" else m.text, style = MaterialTheme.typography.bodyLarge)
+        Text(if (m.text.isEmpty() && generating) "…" else shown + if (m.isHidden) "  (hidden)" else "", style = MaterialTheme.typography.bodyLarge)
         if (isLast && !m.isUser && (m.swipes.size > 1 || !generating)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(enabled = m.swipeId > 0 && !generating, onClick = { onSwipe(-1) }) { Text("◀") }

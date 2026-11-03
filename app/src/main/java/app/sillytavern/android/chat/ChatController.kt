@@ -167,6 +167,12 @@ class ChatController(
         }
     }
 
+    /** Runs a button press; the UI then sends [QuickReplyOutcome.textToSend] or fills the input with [QuickReplyOutcome.inputText]. */
+    suspend fun pressQuickReply(set: app.sillytavern.android.quickreply.QuickReplySet, qr: app.sillytavern.android.quickreply.QuickReply, currentInput: String): app.sillytavern.android.quickreply.QuickReplyOutcome {
+        val svc = quickReplies ?: return app.sillytavern.android.quickreply.QuickReplyOutcome(null, null, null)
+        return svc.run(set, qr, currentInput, CommandExecutor(host), { Macros.expand(it, host.macroContext()) })
+    }
+
     fun runStartupQuickReplies() = fireAuto(QuickReplyService.Trigger.STARTUP)
 
     fun clearError() = _state.update { it.copy(error = null) }

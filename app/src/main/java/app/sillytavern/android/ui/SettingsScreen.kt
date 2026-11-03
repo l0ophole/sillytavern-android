@@ -19,7 +19,7 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.data.*
 
 @Composable
-fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit) {
+fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> Unit, onPresets: () -> Unit, onWorlds: () -> Unit, onQuickReplies: () -> Unit, onRegex: () -> Unit) {
     val s by c.settings.settings.collectAsState()
     var editConn by remember { mutableStateOf<ConnectionProfile?>(null) }
     var editPersona by remember { mutableStateOf<Persona?>(null) }
@@ -53,6 +53,21 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             }
             Row {
                 TextButton(onClick = onWorlds) { Text("World Info (${s.globalWorldBooks.size} global)") }
+            }
+            Row {
+                TextButton(onClick = onQuickReplies) { Text("Quick Replies (${s.quickReplies.globalSets.size} global)") }
+            }
+            Row {
+                TextButton(onClick = onRegex) { Text("Regex scripts") }
+            }
+            if (s.globalVariables.isNotEmpty()) {
+                Text("Global variables", style = MaterialTheme.typography.titleMedium)
+                s.globalVariables.forEach { (k, v) ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("$k = ${v.take(60)}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { c.settings.update { st -> st.copy(globalVariables = st.globalVariables - k) } }) { Text("Delete") }
+                    }
+                }
             }
             Spacer(Modifier.height(32.dp))
         }

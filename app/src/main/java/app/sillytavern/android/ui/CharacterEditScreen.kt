@@ -55,6 +55,9 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
     val attachedWorld = ((base.raw["extensions"] as? JsonObject)?.get("world") as? JsonPrimitive)?.contentOrNull.orEmpty()
     var world by remember { mutableStateOf(attachedWorld) }
     var worldNames by remember { mutableStateOf(c.worlds.list()) }
+    var scoped by remember { mutableStateOf(c.regexScripts.scopedOf(base)) }
+    val qrNames = remember { c.quickReplyRepo.list() }
+    var qrSet by remember { mutableStateOf(existing?.fileName?.let { c.settings.settings.value.quickReplies.characterSets[it] }) }
     var avatar by remember { mutableStateOf<ByteArray?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -72,9 +75,15 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
                     alternateGreetings = alts.split(Regex("\\n---\\n")).map { it.trim() }.filter { it.isNotEmpty() },
                     tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() },
                     raw = withWorld(base.raw, world),
-                )
+                ).let { cd -> c.regexScripts.withScoped(cd, scoped) }
                 runCatching { c.characters.save(existing?.fileName, card, avatar) }
-                    .onSuccess { onDone() }.onFailure { error = "Save failed: ${it.message}" }
+                    .onSuccess { saved ->
+                        c.settings.update { st ->
+                            val m = st.quickReplies.characterSets - saved.fileName
+                            st.copy(quickReplies = st.quickReplies.copy(characterSets = if (qrSet == null) m else m + (saved.fileName to qrSet!!)))
+                        }
+                        onDone()
+                    }.onFailure { error = "Save failed: ${it.message}" }
             }) { Text("Save") }
         })
     }) { pad ->
@@ -104,6 +113,9 @@ fun CharacterEditScreen(c: AppContainer, fileName: String?, onDone: () -> Unit) 
                     c.worlds.save(WorldJson.fromCharacterBook(n, cb)); worldNames = c.worlds.list(); world = n
                 }) { Text("Import embedded lorebook as a world book") }
             }
+            Pick("Quick reply set", listOf("(none)") + qrNames, if (qrSet == null) 0 else qrNames.indexOf(qrSet) + 1) { qrSet = if (it == 0) null else qrNames[it - 1] }
+            Text("Regex scripts (this character)", style = MaterialTheme.typography.titleMedium)
+            RegexListEditor(scoped, { scoped = it })
             Spacer(Modifier.height(24.dp))
         }
     }
