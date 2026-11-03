@@ -3,7 +3,7 @@ package app.sillytavern.android.group
 import kotlinx.serialization.json.*
 
 object ActivationStrategy { const val NATURAL = 0; const val LIST = 1; const val MANUAL = 2; const val POOLED = 3 }
-object GenerationMode { const val SWAP = 0; const val APPEND = 1; const val APPEND_DISABLED = 2 }
+object GroupGenerationMode { const val SWAP = 0; const val APPEND = 1; const val APPEND_DISABLED = 2 }
 
 /** A group as SillyTavern stores it (`groups/<id>.json`); members are avatar file names with extension. */
 data class Group(
@@ -12,7 +12,7 @@ data class Group(
     val members: List<String> = emptyList(),
     val disabledMembers: List<String> = emptyList(),
     val activationStrategy: Int = ActivationStrategy.NATURAL,
-    val generationMode: Int = GenerationMode.SWAP,
+    val generationMode: Int = GroupGenerationMode.SWAP,
     val allowSelfResponses: Boolean = false,
     val autoModeDelay: Int = 5,
     val joinPrefix: String = "",

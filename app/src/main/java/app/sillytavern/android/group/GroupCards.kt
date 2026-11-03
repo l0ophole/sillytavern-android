@@ -10,11 +10,11 @@ data class MergedCard(val description: String, val personality: String, val scen
 object GroupCards {
     /** Null in SWAP mode. [expand] resolves macros for a given member name. */
     fun merge(group: Group, members: List<GroupCardMember>, currentAvatar: String, expand: (String, String) -> String): MergedCard? {
-        if (group.generationMode == GenerationMode.SWAP) return null
+        if (group.generationMode == GroupGenerationMode.SWAP) return null
         fun field(fieldName: String, get: (CharacterCard) -> String, pre: (String) -> String = { it }): String =
             members.filter { m ->
                 m.avatar in group.members &&
-                    (!group.isMuted(m.avatar) || m.avatar == currentAvatar || group.generationMode == GenerationMode.APPEND_DISABLED)
+                    (!group.isMuted(m.avatar) || m.avatar == currentAvatar || group.generationMode == GroupGenerationMode.APPEND_DISABLED)
             }.map { m ->
                 val v = get(m.card).trim()
                 if (v.isEmpty()) return@map ""

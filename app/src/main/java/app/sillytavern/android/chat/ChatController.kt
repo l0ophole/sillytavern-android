@@ -9,6 +9,7 @@ import app.sillytavern.android.api.ToolRegistry
 import app.sillytavern.android.api.GenerationRequest
 import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
+import app.sillytavern.android.group.*
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.command.*
@@ -21,6 +22,7 @@ import app.sillytavern.android.worldinfo.*
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlin.random.Random
 
 data class ChatUiState(
     val character: StoredCharacter? = null,
@@ -31,6 +33,11 @@ data class ChatUiState(
     val impersonation: String? = null,
     /** Transient message from `/echo` for the UI to show once. */
     val notice: String? = null,
+    /** Group chat: the open group, its resolvable members (group order) and the avatars still queued to speak. */
+    val group: Group? = null,
+    val members: List<StoredCharacter> = emptyList(),
+    val groupQueue: List<String> = emptyList(),
+    val autoMode: Boolean = false,
 )
 
 /**
@@ -49,6 +56,10 @@ class ChatController(
     private val updateSettings: ((AppSettings) -> AppSettings) -> Unit = {},
     /** Global + character-scoped regex scripts for the open chat. */
     private val regex: (app.sillytavern.android.card.CharacterCard?) -> List<RegexScript> = { emptyList() },
+    private val groups: GroupRepository? = null,
+    /** Looks a character up by file name (group members are stored as `<fileName>.png`). */
+    private val characterLookup: (String) -> StoredCharacter? = { null },
+    private val random: Random = Random.Default,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -58,7 +69,7 @@ class ChatController(
     private val messages get() = chat?.messages.orEmpty()
 
     fun open(character: StoredCharacter, chatFile: File? = null) {
-        stop()
+        stop(); stopAuto()
         val s = settings()
         val loaded = when {
             chatFile != null -> repo.load(chatFile)
@@ -70,6 +81,7 @@ class ChatController(
     }
 
     fun newChat() {
+        group?.let { g -> groups?.let { openGroup(it.addChat(g)) }; return }
         val c = _state.value.character ?: return
         stop()
         _state.value = ChatUiState(character = c, chat = createChat(c, settings().activePersona.name))
@@ -86,9 +98,30 @@ class ChatController(
     }
 
     /** Chat files for the open character, newest first. */
-    fun chatFiles(): List<File> = _state.value.character?.let { repo.list(it.fileName) }.orEmpty()
+    fun chatFiles(): List<File> {
+        val g = group
+        if (g != null) return g.chats.map { groups!!.chatFile(it) }.filter { it.exists() }
+        return _state.value.character?.let { repo.list(it.fileName) }.orEmpty()
+    }
+
+    /** Opens another chat of the current character or group. */
+    fun openChatFile(file: File) {
+        val g = group
+        if (g != null) openGroup(g, file.nameWithoutExtension) else _state.value.character?.let { open(it, file) }
+    }
 
     fun deleteChatFile(file: File) {
+        val g = group
+        if (g != null) {
+            val id = file.nameWithoutExtension
+            file.delete()
+            val left = g.chats.filter { it != id }
+            val next = g.copy(chats = left, chatId = if (g.chatId == id) left.lastOrNull() ?: id else g.chatId)
+            groups?.save(next)
+            if (g.chatId == id) { if (left.isEmpty()) groups?.let { openGroup(it.addChat(next.copy(chats = emptyList()))) } else openGroup(next) }
+            else _state.update { it.copy(group = next) }
+            return
+        }
         repo.delete(file)
         if (file == chat?.file) {
             val c = _state.value.character ?: return
@@ -224,7 +257,7 @@ class ChatController(
         override suspend fun sendUser(text: String) { if (text.isNotBlank()) mutate { it + ChatMessage.user(settings().activePersona.name, text.trim()) } }
         override suspend fun addSystemMessage(text: String) { mutate { it + ChatMessage.narrator(text) } }
         override suspend fun addMessageAs(name: String, text: String) { mutate { it + ChatMessage.assistant(name, text) } }
-        override suspend fun generateReply() { waitIdle(); generateNew(); job?.join() }
+        override suspend fun generateReply() { waitIdle(); newReply(isUserInput = false); groupJob?.join(); job?.join() }
         override suspend fun continueLast() { waitIdle(); this@ChatController.continueLast(); job?.join() }
         override suspend fun regenerate() { waitIdle(); this@ChatController.regenerate(); job?.join() }
         override suspend fun swipeBy(delta: Int) { if (messages.isNotEmpty()) swipe(messages.lastIndex, delta); job?.join() }
@@ -299,29 +332,38 @@ class ChatController(
         val persona = settings().activePersona.name
         mutate { it + ChatMessage.user(persona, regexed(text.trim(), Placement.USER_INPUT, RegexParams()).ifBlank { text.trim() }) }
         fireAuto(QuickReplyService.Trigger.USER)
-        generateNew()
+        newReply(isUserInput = true, input = text)
+    }
+
+    /** A fresh reply: one message from the open character, or a batch from the members the group activates. */
+    private fun newReply(isUserInput: Boolean, input: String = "") {
+        if (group == null) generateNew() else groupReply(isUserInput, input)
     }
 
     /** Regenerate the last reply as a new swipe, or generate one if the last message is the user's. */
     fun regenerate() {
         if (_state.value.generating) return
         val last = messages.lastOrNull() ?: return
-        if (last.isUser) generateNew() else {
+        if (last.isUser) newReply(isUserInput = false) else {
+            val sp = lastSpeaker(); if (group != null && sp == null) return
             val idx = messages.lastIndex
             mutate { it.toMutableList().also { l -> l[idx] = l[idx].addSwipe("") } }
-            runGeneration(GenerationMode.NORMAL, idx, appendTo = false, trigger = "regenerate")
+            runGeneration(GenerationMode.NORMAL, idx, appendTo = false, trigger = "regenerate", speaker = sp)
         }
     }
 
     fun continueLast() {
         if (_state.value.generating) return
         val last = messages.lastOrNull()?.takeIf { !it.isUser } ?: return
-        runGeneration(GenerationMode.CONTINUE, messages.lastIndex, appendTo = true, trigger = "continue")
+        val sp = lastSpeaker(); if (group != null && sp == null) return
+        runGeneration(GenerationMode.CONTINUE, messages.lastIndex, appendTo = true, trigger = "continue", speaker = sp)
     }
 
     fun impersonate() {
         if (_state.value.generating || messages.isEmpty()) return
-        runGeneration(GenerationMode.IMPERSONATE, null, appendTo = false, trigger = "impersonate")
+        val sp = if (group == null) null else GroupActivation.impersonate(memberInfos(onlyEnabled = false), random).firstOrNull()?.let(::memberByAvatar)
+        if (group != null && sp == null) { _state.update { it.copy(error = "This group has no members") }; return }
+        runGeneration(GenerationMode.IMPERSONATE, null, appendTo = false, trigger = "impersonate", speaker = sp)
     }
 
     fun swipe(index: Int, delta: Int) {
@@ -344,18 +386,21 @@ class ChatController(
     }
 
     fun stop() {
+        batch = false
+        groupJob?.cancel(); groupJob = null
         job?.cancel()
         job = null
     }
 
-    private fun generateNew() {
-        val c = _state.value.character ?: return
-        mutate { it + ChatMessage.assistant(c.card.name, "") }
-        runGeneration(GenerationMode.NORMAL, messages.lastIndex, appendTo = false)
+    private fun generateNew(speaker: StoredCharacter? = null) {
+        val c = speaker ?: _state.value.character ?: return
+        val msg = ChatMessage.assistant(c.card.name, "").let { if (group != null) it.withOriginalAvatar(avatarOf(c)) else it }
+        mutate { it + msg }
+        runGeneration(GenerationMode.NORMAL, messages.lastIndex, appendTo = false, speaker = speaker)
     }
 
-    private fun runGeneration(mode: GenerationMode, targetIndex: Int?, appendTo: Boolean, trigger: String = "normal") {
-        val character = _state.value.character ?: return
+    private fun runGeneration(mode: GenerationMode, targetIndex: Int?, appendTo: Boolean, trigger: String = "normal", speaker: StoredCharacter? = null) {
+        val character = speaker ?: _state.value.character ?: return
         val s = settings()
         val profile = s.activeConnection
         if (profile == null) {
@@ -367,14 +412,14 @@ class ChatController(
         val prefix = if (appendTo && targetIndex != null) messages[targetIndex].text else ""
         val textMode = profile.type.usesTextPrompt
         val input = PromptInput(
-            card = character.card, persona = s.activePersona, preset = s.activePreset,
+            card = cardFor(character), persona = s.activePersona, preset = s.activePreset,
             history = history, maxContextTokens = profile.sampler.maxContextTokens,
             maxResponseTokens = profile.sampler.maxResponseTokens,
             counter = counterFor(profile.type), mode = mode,
             promptManager = s.activePromptManager,
             // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
             systemPrompt = if (textMode) s.activeSystemPrompt else null,
-            vars = variableStore(), regexScripts = scripts(),
+            vars = variableStore(), regexScripts = scripts(), groupNames = group != null,
         )
         // Re-rolls of an existing reply must not advance sticky/cooldown timers.
         val dryRun = trigger != "normal"
@@ -421,7 +466,7 @@ class ChatController(
                         else setTargetText(targetIndex, regexed(messages[targetIndex].text.trimEnd(), Placement.AI_OUTPUT, RegexParams()))
                     }
                     persist()
-                    _state.update { it.copy(generating = false, error = failure) }
+                    _state.update { it.copy(generating = batch, error = failure) }
                     if (failure == null && targetIndex != null && isActive) fireAuto(QuickReplyService.Trigger.AI)
                 }
             }
@@ -456,6 +501,140 @@ class ChatController(
     private fun mutate(f: (List<ChatMessage>) -> List<ChatMessage>) {
         _state.update { st -> st.chat?.let { st.copy(chat = it.copy(messages = f(it.messages))) } ?: st }
         persist()
+    }
+
+    // ---------------------------------------------------------------- group chats
+
+    private var groupJob: Job? = null
+    private var autoJob: Job? = null
+    /** True while a group batch is running, so `generating` does not flicker between members. */
+    private var batch = false
+
+    private val group get() = _state.value.group
+    private fun avatarOf(c: StoredCharacter) = c.fileName + ".png"
+    private fun memberByAvatar(a: String) = _state.value.members.firstOrNull { avatarOf(it) == a }
+
+    private fun memberInfos(onlyEnabled: Boolean): List<Member> {
+        val g = group ?: return emptyList()
+        return g.members.mapNotNull(::memberByAvatar).filter { !onlyEnabled || !g.isMuted(avatarOf(it)) }
+            .map { Member(avatarOf(it), it.card.name, it.card.talkativeness) }
+    }
+
+    /** The speaker's card, with the other members' fields merged in for APPEND generation modes. */
+    private fun cardFor(speaker: StoredCharacter): app.sillytavern.android.card.CharacterCard {
+        val g = group ?: return speaker.card
+        val cards = g.members.mapNotNull { a -> memberByAvatar(a)?.let { GroupCardMember(a, it.card.name, it.card) } }
+        val user = settings().activePersona.name
+        val merged = GroupCards.merge(g, cards, avatarOf(speaker)) { t, name -> Macros.expand(t, MacroContext(user = user, char = name)) }
+            ?: return speaker.card
+        return speaker.card.copy(description = merged.description, personality = merged.personality, scenario = merged.scenario, messageExample = merged.mesExamples)
+    }
+
+    /** Author of the last message (group) or the open character; reports an error when the author left the group. */
+    private fun lastSpeaker(): StoredCharacter? {
+        if (group == null) return null
+        val a = GroupActivation.swipe(memberInfos(onlyEnabled = false), messages).firstOrNull()
+        val m = a?.let(::memberByAvatar)
+        if (m == null) _state.update { it.copy(error = "The member who wrote this message is no longer in the group. Add them back to continue.") }
+        return m
+    }
+
+    private fun resolveMembers(g: Group) = g.members.mapNotNull { characterLookup(it.removeSuffix(".png")) }
+
+    fun openGroup(group: Group, chatId: String? = null) {
+        stop(); stopAuto()
+        val gr = groups ?: return
+        val g = if (chatId != null && chatId != group.chatId) group.copy(chatId = chatId, chats = (group.chats + chatId).distinct()).also(gr::save) else group
+        val members = resolveMembers(g)
+        val file = gr.chatFile(g.chatId)
+        val loaded = if (file.exists()) repo.load(file) else repo.createGroupChat(file, groupGreetings(g, members))
+        _state.value = ChatUiState(character = members.firstOrNull(), chat = loaded, group = g, members = members)
+        fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
+    }
+
+    /** New group chats start with each enabled member's first greeting (alternates become swipes). */
+    private fun groupGreetings(g: Group, members: List<StoredCharacter>): List<ChatMessage> =
+        members.filter { !g.isMuted(avatarOf(it)) }.mapNotNull { m ->
+            val gr = m.card.greetings
+            gr.firstOrNull()?.let { ChatMessage.assistant(m.card.name, it).withOriginalAvatar(avatarOf(m)).copy(swipes = gr) }
+        }
+
+    /** Applies [f] to the open group, saves it and refreshes the resolved member list. */
+    fun updateGroup(f: (Group) -> Group) {
+        val g = group ?: return
+        val n = f(g)
+        groups?.save(n)
+        _state.update { it.copy(group = n, members = resolveMembers(n)) }
+    }
+
+    fun muteMember(avatar: String, muted: Boolean) = updateGroup { g ->
+        g.copy(disabledMembers = if (muted) (g.disabledMembers + avatar).distinct() else g.disabledMembers - avatar)
+    }
+
+    /** Makes one member speak now, even a muted one. */
+    fun speak(avatar: String) {
+        if (_state.value.generating) return
+        if (memberByAvatar(avatar) == null) { _state.update { it.copy(error = "That member is missing from the group") }; return }
+        startBatch(listOf(avatar))
+    }
+
+    private fun groupReply(isUserInput: Boolean, input: String) {
+        val g = group ?: return
+        val enabled = memberInfos(onlyEnabled = true)
+        val last = messages.lastOrNull()
+        val text = if (isUserInput) input else last?.takeIf { !it.isSystem }?.text.orEmpty()
+        val picked = when (g.activationStrategy) {
+            ActivationStrategy.LIST -> GroupActivation.list(enabled)
+            ActivationStrategy.POOLED -> GroupActivation.pooled(enabled, messages, last, isUserInput, random)
+            ActivationStrategy.MANUAL -> if (isUserInput) emptyList() else GroupActivation.manual(enabled, random)
+            else -> GroupActivation.natural(enabled, text, last, g.allowSelfResponses, isUserInput, random)
+        }
+        if (picked.isEmpty()) {
+            if (enabled.isEmpty()) _state.update { it.copy(notice = "All group members are muted or missing; nobody can reply.") }
+            return
+        }
+        startBatch(picked)
+    }
+
+    /** Generates one reply per avatar, in order; stops at the first error or on [stop]. */
+    private fun startBatch(avatars: List<String>) {
+        val speakers = avatars.mapNotNull(::memberByAvatar)
+        if (speakers.isEmpty()) return
+        batch = true
+        _state.update { it.copy(generating = true, error = null, groupQueue = speakers.map(::avatarOf)) }
+        groupJob = scope.launch {
+            try {
+                for ((i, sp) in speakers.withIndex()) {
+                    _state.update { it.copy(groupQueue = speakers.drop(i).map(::avatarOf)) }
+                    generateNew(sp)
+                    job?.join()
+                    if (_state.value.error != null) break
+                }
+            } finally {
+                withContext(NonCancellable) {
+                    batch = false
+                    _state.update { it.copy(generating = job?.isActive == true, groupQueue = emptyList()) }
+                }
+            }
+        }
+    }
+
+    /** Auto mode: while on, an idle group chat gets a new reply every `autoModeDelay` seconds. */
+    fun setAutoMode(on: Boolean) {
+        stopAuto()
+        if (!on || group == null) return
+        _state.update { it.copy(autoMode = true) }
+        autoJob = scope.launch {
+            while (isActive) {
+                delay((group?.autoModeDelay ?: 5).coerceAtLeast(1) * 1000L)
+                if (!_state.value.generating && messages.isNotEmpty()) groupReply(isUserInput = false, input = "")
+            }
+        }
+    }
+
+    private fun stopAuto() {
+        autoJob?.cancel(); autoJob = null
+        if (_state.value.autoMode) _state.update { it.copy(autoMode = false) }
     }
 
     private fun persist() = chat?.takeIf { it.file != null }?.let(repo::save)
