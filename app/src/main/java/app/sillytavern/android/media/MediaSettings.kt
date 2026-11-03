@@ -82,7 +82,9 @@ data class ImageGenSettings(
     val llmPrompt: Boolean = true,
     /** ComfyUI API-format workflow with %prompt%, %negative_prompt%, %seed%, %steps%, %scale%, %width%, %height%, %model%, %sampler%, %scheduler% placeholders. */
     val comfyWorkflow: String = "",
+    val novelUrl: String = "https://image.novelai.net",
     val novelModel: String = "nai-diffusion-3",
+    val openAiUrl: String = "https://api.openai.com/v1",
     val openAiModel: String = "dall-e-3",
     val openAiQuality: String = "standard",
     /** Place generated images in the chat as a message from the system. */

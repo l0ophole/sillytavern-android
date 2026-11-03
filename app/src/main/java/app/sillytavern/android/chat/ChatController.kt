@@ -72,6 +72,9 @@ class ChatController(
     private val random: Random = Random.Default,
     /** Data root; attachments are stored relative to it (`user/images/...`). Null disables attachments in prompts. */
     val mediaRoot: File? = null,
+    private val imageBackend: ImageBackend = ImageGenerator(),
+    /** Secret-store lookup for the media services (see [MediaSettings.KEY_IMAGE]). */
+    private val mediaKey: (String) -> String? = { null },
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -300,6 +303,7 @@ class ChatController(
         }
         override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun drawImage(subject: String, quiet: Boolean, negative: String?): String = generateImage(subject, quiet, negative)
         override suspend fun speak(text: String, voice: String?) { speakText(text, voice) }
         override suspend fun caption(mesId: Int?, prompt: String?): String = captionMessage(mesId ?: messages.indexOfLast { it.imagePath != null }, prompt)
         override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
@@ -681,6 +685,48 @@ class ChatController(
         val bytes = text.toByteArray()
         val path = saveMedia(bytes, fileName, "files") ?: return
         _state.update { it.copy(pendingFile = app.sillytavern.android.media.FileAttachment(path, fileName, bytes.size.toLong())) }
+    }
+
+    /**
+     * Draws an image. [subject] is a mode word (`you`, `me`, `scene`, `last`, `raw_last`, `face`, `background`) or a
+     * prompt of its own; empty means the scene. With [quiet] no message is added. Returns the image path.
+     */
+    suspend fun generateImage(subject: String, quiet: Boolean = false, negative: String? = null): String {
+        val character = _state.value.character
+        val s = settings().media.imageGen
+        val mode = ImageMode.parse(subject)
+        val last = messages.lastOrNull { it.inPrompt && it.text.isNotBlank() }?.text.orEmpty()
+        val base = when {
+            mode == null && subject.isNotBlank() -> subject.trim()
+            (mode ?: ImageMode.SCENE) == ImageMode.RAW_LAST -> last
+            s.llmPrompt && ImagePrompts.instruction(mode ?: ImageMode.SCENE) != null ->
+                ImagePrompts.clean(quietGenerate(ImagePrompts.instruction(mode ?: ImageMode.SCENE)!!, true))
+            else -> when (mode ?: ImageMode.SCENE) {
+                ImageMode.CHARACTER, ImageMode.FACE -> listOfNotNull(character?.card?.name, character?.card?.description).joinToString(", ")
+                ImageMode.USER -> settings().activePersona.let { "${it.name}, ${it.description}" }
+                ImageMode.BACKGROUND -> character?.card?.scenario.orEmpty()
+                else -> last
+            }
+        }.trim()
+        if (base.isBlank()) throw CommandError("There is nothing to draw yet")
+        val prompt = ImagePrompts.compose(s.prefix, base)
+        val key = mediaKey(MediaSettings.KEY_IMAGE)
+        _state.update { it.copy(mediaBusy = true) }
+        val image = try { imageBackend.generate(s, prompt, negative ?: s.negative, key) } finally { _state.update { it.copy(mediaBusy = false) } }
+        val stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+        val path = saveMedia(image.bytes, "${imageFolder()}_$stamp.${image.extension}") ?: throw CommandError("No storage available for images")
+        if (!quiet) mutate { it + ChatMessage(character?.card?.name ?: "Image", isUser = false, isSystem = true, swipes = listOf("")).withImage(path, prompt, inline = true) }
+        return path
+    }
+
+    /** UI entry point: runs [generateImage] in the background and reports errors in the state. */
+    fun generateImageAsync(subject: String) {
+        if (_state.value.mediaBusy) return
+        scope.launch {
+            try { generateImage(subject) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(error = "Image failed: ${e.message}") } }
+        }
     }
 
     fun clearAttachments() = _state.update { it.copy(pendingImage = null, pendingFile = null) }

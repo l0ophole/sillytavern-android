@@ -48,6 +48,8 @@ interface CommandHost {
     /** Captions the image of a message (default: the newest with an image) and returns the caption. */
     /** Reads [text] aloud; [voice] is a character name from the voice map or a provider voice. */
     suspend fun speak(text: String, voice: String?): Unit = unavailable()
+    /** Generates an image (see ChatController.generateImage); returns its stored path. */
+    suspend fun drawImage(subject: String, quiet: Boolean, negative: String?): String = unavailable()
     suspend fun caption(mesId: Int?, prompt: String?): String = unavailable()
     fun currentSummary(): String = ""
     suspend fun createBranch(mesId: Int): String? = unavailable()

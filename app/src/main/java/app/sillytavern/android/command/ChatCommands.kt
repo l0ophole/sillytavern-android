@@ -67,6 +67,9 @@ object ChatCommands {
         cmd("summarize", "summary", help = "summarize [text] - summarizes the chat (stored as the chat summary) or the given text; returns the summary.", usesPipe = false) { c ->
             c.host.summarize(c.unnamed.takeIf { it.isNotBlank() })
         }
+        cmd("sd", "imagine", help = "sd [quiet=true] [negative=text] [you|me|scene|last|raw_last|face|background|prompt] - generates an image; returns its path.", usesPipe = false) { c ->
+            c.host.drawImage(c.unnamed, c.named["quiet"]?.trim()?.lowercase() == "true", c.named["negative"])
+        }
         cmd("speak", "talk", help = "speak [voice=Name] text - reads the text aloud with the TTS settings (voice: a character name or provider voice).", usesPipe = false) { c ->
             c.host.speak(c.unnamed, c.named["voice"]?.trim()?.takeIf { it.isNotEmpty() }); c.unnamed
         }
