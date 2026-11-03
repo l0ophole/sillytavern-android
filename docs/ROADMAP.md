@@ -15,8 +15,8 @@ Sets are small and ordered by dependency. Each set gets a plan in docs/plans/ be
 | 9 | Media extensions (DONE) | TTS (system + cloud), STT, image gen (A1111/Comfy/NovelAI), gallery, attachments, captioning (remote) | 7 | - |
 | 10 | Local ML (DONE, no ONNX) | embeddings + vector memory/data bank, expression classifier/sprites, ONNX Runtime Mobile | 7 | - |
 | 11 | Utilities (DONE) | translate, web search, assets/content manager, default content, token counter UI, stats | 2 | - |
-| 12 | Extensions | extension system (Kotlin-defined + QuickJS scripting for third-party JS - decision pending) | 5 | - |
+| 12 | Extensions (DONE, own API) | sandboxed QuickJS extensions with permissions (commands, macros, prompts, events, fetch, storage); no ST browser-extension compatibility | 5 | - |
 | 13 | Data & accounts | backups/restore, data maid, multi-user, optional passcode, SAF-based full export | 1 | - |
 | 14 | Android polish | foreground service/notifications, widgets, share-target import, background generation, battery/memory tuning | 1 | - |
 
-Open questions: how far to go on third-party JS extensions (set 12); which local-ML features are worth the on-device cost (set 10).
+Open questions: which local-ML features are worth the on-device cost (set 10).

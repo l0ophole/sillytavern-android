@@ -37,8 +37,15 @@ class ExtensionRepository(val root: File) {
                 val name = e.name.replace('\\', '/')
                 if (name.startsWith("/") || name.split('/').any { it == ".." }) throw ExtensionException("The zip contains an unsafe path: ${e.name}")
                 if (files.size >= MAX_FILES) throw ExtensionException("The zip has too many files")
-                val bytes = zip.readNBytes(MAX_FILE_BYTES + 1)
-                if (bytes.size > MAX_FILE_BYTES) throw ExtensionException("${e.name} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB")
+                val buf = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8192)
+                while (true) {
+                    val n = zip.read(chunk)
+                    if (n < 0) break
+                    buf.write(chunk, 0, n)
+                    if (buf.size() > MAX_FILE_BYTES) throw ExtensionException("${e.name} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB")
+                }
+                val bytes = buf.toByteArray()
                 total += bytes.size
                 if (total > MAX_TOTAL_BYTES) throw ExtensionException("The zip is larger than ${MAX_TOTAL_BYTES / 1024 / 1024} MB")
                 files[name] = bytes

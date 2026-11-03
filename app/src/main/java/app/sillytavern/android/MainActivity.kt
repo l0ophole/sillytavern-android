@@ -62,6 +62,7 @@ private fun AppNav(c: AppContainer) {
                 onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") },
                 onMedia = { nav.navigate("media") }, onGallery = { nav.navigate("gallery") }, onMemory = { nav.navigate("memory") }, onTools = { nav.navigate(it) })
         }
+        composable("extensions") { ExtensionsScreen(c, onBack = { nav.popBackStack() }) }
         composable("tools") { ToolsScreen(c, onBack = { nav.popBackStack() }) }
         composable("content") { ContentScreen(c, onBack = { nav.popBackStack() }) }
         composable("tokens") { TokenScreen(c, onBack = { nav.popBackStack() }) }

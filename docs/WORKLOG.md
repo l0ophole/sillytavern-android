@@ -260,3 +260,24 @@ See docs/ROADMAP.md.
 - Nothing ran on a device/emulator: the four screens, the Seraphina install from the character list, theme apply
 - HTTP clients are tested against MockWebServer with request shapes from the services' documentation; no real Google/DeepL/LibreTranslate/SearXNG/Brave/Tavily/Serper calls
 - Not built: Google Cloud/Azure/Bing/Yandex/Lingva translators, DuckDuckGo/Kagi/SerpApi search, page scraping, ambient/bgm/live2d/vrm asset types, per-model tokenizers other than OpenAI, time-spent statistics
+
+
+## Done (feature set 12: extensions) — plan: docs/plans/11-extensions.md, authoring guide: docs/EXTENSIONS.md
+- Decision: third-party extensions are sandboxed QuickJS scripts (`app.cash.quickjs` 0.9.2) against a small `st.*` API, not a browser DOM; unmodified SillyTavern extensions do not run. Sets 1-11 stay built in
+- `extensions/ExtensionManifest.kt`, `ExtensionRepository.kt`: `extensions/<id>/` with `manifest.json`, script, `storage.json`; zip install (zip-slip safe, 200 files / 2 MB per file / 8 MB total); reinstall keeps storage
+- `QuickJsEngine.kt`, `Prelude.kt`: one runtime + thread per extension, JSON bridge, 5 s per call; a call that overruns marks the engine faulted (QuickJS cannot be interrupted, the thread is abandoned)
+- `ExtensionHost.kt`: commands (never over a built-in), macros (resolved after built-ins, sync, 1 s, no blocking calls), events (`chat_changed`, `message_sent`, `message_received`, `generation_started/ended`), one prompt per extension, storage, `fetch` (http/https, 1 MB), `generateQuiet`, chat actions; each call needs the manifest permission *and* the user's confirmation
+- `ExtensionManager.kt`: install / enable (records confirmed permissions) / disable / remove; a reinstall switches the extension off until it is confirmed again
+- ChatController hooks (events, extension prompts, `ExtensionEnv`), Settings → Extensions screen (install zip, switch with permission dialog, status, log, remove)
+- Verification: 816 JVM unit tests pass (29 new, including a real QuickJS engine and a ChatController integration test), lint 0 issues, debug APK builds
+
+## Rulings / deviations (set 12)
+- Executed on `main`, native, no subagents; the screen compiles + lints only
+- The planned `ScriptEngine` interface was dropped: QuickJS runs on the JVM in tests, so a fake engine added nothing
+- Unit tests set `java.io.tmpdir` to `build/tmp/test-java` (QuickJS unpacks its native library there); `/tmp` on this machine hit its disk quota during the work
+- Event timeouts are measured in real time even when the caller uses a virtual-time test dispatcher
+
+## Not verified (set 12)
+- Nothing ran on a device/emulator: the Android QuickJS native library (`quickjs-android`) was never loaded on Android, only the JVM build in tests; the Extensions screen and zip picker
+- Infinite loops leak a thread and its QuickJS runtime until the process ends; memory use is not capped
+- Not built: DOM / jQuery / `getContext()` compatibility, git-URL install, extension-drawn UI, async APIs, per-event loop protection (a `message_sent` handler that sends a message retriggers itself)

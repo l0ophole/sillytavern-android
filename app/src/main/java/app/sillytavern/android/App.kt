@@ -17,9 +17,13 @@ import app.sillytavern.android.worldinfo.WorldBookRepository
 import app.sillytavern.android.data.*
 import app.sillytavern.android.prompt.ApproxTokenCounter
 import app.sillytavern.android.prompt.TiktokenCounter
+import app.sillytavern.android.extensions.ExtensionHost
+import app.sillytavern.android.extensions.ExtensionManager
+import app.sillytavern.android.extensions.ExtensionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Manual dependency container (Hilt is deferred until the object graph justifies it). */
 class AppContainer(app: Application) {
@@ -51,6 +55,9 @@ class AppContainer(app: Application) {
     val defaultContent by lazy { DefaultContent({ p -> app.assets.open(p).use { it.readBytes() } }, assetInstaller, characters, worlds) }
     val webSearch = WebSearchService({ settings.settings.value.tools.search }, { secrets.get(ToolsSettings.KEY_SEARCH) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val extensionRepo = ExtensionRepository(paths.extensions)
+    val extensionHost = ExtensionHost(extensionRepo, { settings.settings.value.extensions }, scope)
+    val extensionManager = ExtensionManager(extensionRepo, extensionHost, { settings.settings.value }, { f -> settings.update(f) })
     private val tiktoken by lazy { TiktokenCounter() }
     fun tokenizer(kind: TokenizerKind): app.sillytavern.android.prompt.TokenCounter = if (kind == TokenizerKind.OPENAI) tiktoken else ApproxTokenCounter
 
@@ -79,7 +86,11 @@ class AppContainer(app: Application) {
         characterKey = { chatController.characterFileName() }, automationIds = { chatController.automationIds() },
     ).also { chatController.quickReplies = it }
 
-    init { chatController.tts = tts; chatController.runStartupQuickReplies() }
+    init {
+        chatController.tts = tts; chatController.runStartupQuickReplies()
+        chatController.extensions = extensionHost
+        scope.launch { extensionHost.sync() }
+    }
 }
 
 class SillyTavernApp : Application() {

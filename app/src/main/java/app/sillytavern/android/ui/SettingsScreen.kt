@@ -34,6 +34,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             TextButton(onClick = { onTools("content") }) { Text(tr("Content manager")) }
             TextButton(onClick = { onTools("tokens") }) { Text(tr("Token counter")) }
             TextButton(onClick = { onTools("stats") }) { Text(tr("Statistics")) }
+            TextButton(onClick = { onTools("extensions") }) { Text(tr("Extensions")) }
             SectionHeader(tr("Connections")) { editConn = ConnectionProfile() }
             if (s.connections.isEmpty()) Text("No connections. Tap Add to configure an API.", Modifier.padding(vertical = 8.dp))
             s.connections.forEach { p ->
