@@ -51,6 +51,10 @@ class VectorStore(private val dir: File) {
         if (removed > 0) write(name, c)
     }
 
+    /** Deletes every collection. */
+    @Synchronized
+    fun dropAll() { cache.clear(); dir.listFiles { f -> f.extension == "vec" }?.forEach { it.delete() } }
+
     @Synchronized
     fun drop(name: String) { cache.remove(name); file(name).delete() }
 

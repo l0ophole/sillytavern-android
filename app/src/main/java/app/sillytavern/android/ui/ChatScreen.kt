@@ -138,6 +138,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                     }, label = { Text(qr.label.ifBlank { "?" }, maxLines = 1) })
                 }
             }
+            SpritePanel(c, state.expression, ctl.spriteOwner())
             state.group?.let { g -> MemberStrip(g, state.members, state.generating, state.groupQueue, onSpeak = ctl::speak, onMute = ctl::muteMember) }
             if (state.pendingImage != null || state.pendingFile != null || state.mediaBusy) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 state.pendingImage?.let { p -> app.sillytavern.android.media.MessageMedia.resolve(c.paths.root, p)?.let { f -> coil.compose.AsyncImage(f, null, Modifier.size(48.dp)) } }

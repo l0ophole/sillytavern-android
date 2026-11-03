@@ -12,13 +12,13 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.media.*
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) =
+internal fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) =
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f)); Switch(checked, onChange)
     }
 
 @Composable
-private fun <T> ChoiceRow(label: String, options: List<T>, selected: T, name: @Composable (T) -> String, onSelect: (T) -> Unit) {
+internal fun <T> ChoiceRow(label: String, options: List<T>, selected: T, name: @Composable (T) -> String, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
@@ -31,13 +31,13 @@ private fun <T> ChoiceRow(label: String, options: List<T>, selected: T, name: @C
 
 /** An API-key field that writes straight to the encrypted secret store. */
 @Composable
-private fun KeyField(c: AppContainer, label: String, key: String) {
+internal fun KeyField(c: AppContainer, label: String, key: String) {
     var v by remember { mutableStateOf(c.secrets.get(key).orEmpty()) }
     Field(label, v, { v = it; if (it.isBlank()) c.secrets.remove(key) else c.secrets.set(key, it) }, secret = true)
 }
 
 @Composable
-private fun Section(title: String) = Text(title, Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleLarge)
+internal fun Section(title: String) = Text(title, Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleLarge)
 
 @Composable
 fun MediaSettingsScreen(c: AppContainer, onBack: () -> Unit) {

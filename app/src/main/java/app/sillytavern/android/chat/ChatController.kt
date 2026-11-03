@@ -129,6 +129,7 @@ class ChatController(
     }
 
     fun deleteChatFile(file: File) {
+        memory?.forgetChat(file.nameWithoutExtension)
         val g = group
         if (g != null) {
             val id = file.nameWithoutExtension
@@ -900,7 +901,8 @@ class ChatController(
 
     // ---------------------------------------------------------------- expressions
 
-    private fun spriteOwner(): String? = messages.lastOrNull { !it.isUser && !it.isSystem }?.name ?: _state.value.character?.card?.name
+    /** Name whose sprite folder is shown: the latest character line's speaker. */
+    fun spriteOwner(): String? = messages.lastOrNull { !it.isUser && !it.isSystem }?.name ?: _state.value.character?.card?.name
 
     /** Keyword-classified expression of the newest character line when a chat is opened (no model call). */
     private fun initialExpression(msgs: List<ChatMessage>): String? {
