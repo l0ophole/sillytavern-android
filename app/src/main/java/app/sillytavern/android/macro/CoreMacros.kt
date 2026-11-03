@@ -8,6 +8,10 @@ import kotlin.random.Random
 object MacroDefinitions {
     fun registerAll() {
         CoreMacros.register()
+        TimeMacros.register()
+        VariableMacros.register()
+        InstructMacros.register()
+        ChatMacros.register()
     }
 }
 
@@ -22,10 +26,44 @@ object CoreMacros {
         simple("personality") { it.ctx.personality }
         simple("scenario") { it.ctx.scenario }
         simple("persona") { it.ctx.persona }
-        simple("newline") { "\n" }
+        MacroRegistry.register(MacroDef(listOf("newline"), 0, 1) { "\n".repeat(it.arg(0).trim().toIntOrNull()?.coerceIn(0, 100) ?: 1) })
+        MacroRegistry.register(MacroDef(listOf("space"), 0, 1) { " ".repeat(it.arg(0).trim().toIntOrNull()?.coerceIn(0, 100) ?: 1) })
+        simple("noop") { "" }
+        MacroRegistry.register(MacroDef(listOf("banned")) { "" })
+        simple("group", "groupNotMuted", "charIfNotGroup") { it.ctx.char }
+        simple("notChar") { it.ctx.user }
+        simple("charPrompt") { it.ctx.charPrompt }
+        simple("charInstruction") { it.ctx.charInstruction }
+        simple("charDescription") { it.ctx.description }
+        simple("charPersonality") { it.ctx.personality }
+        simple("charScenario") { it.ctx.scenario }
+        simple("mesExamplesRaw") { it.ctx.mesExamplesRaw }
+        simple("mesExamples") { it.ctx.mesExamples }
+        simple("charDepthPrompt") { it.ctx.depthPrompt }
+        simple("charCreatorNotes", "creatorNotes") { it.ctx.creatorNotes }
+        simple("charFirstMessage", "greeting") { it.ctx.firstMessage }
+        simple("charVersion") { it.ctx.charVersion }
+        simple("model") { it.ctx.model }
+        simple("input") { it.ctx.input }
+        simple("isMobile") { it.ctx.isMobile.toString() }
+        simple("lastGenerationType") { it.ctx.lastGenerationType }
+        simple("systemPrompt") { it.ctx.systemPromptText }
+        simple("maxPrompt", "maxPromptTokens", "maxContext", "maxContextTokens") { it.ctx.maxPrompt.toString() }
+        simple("maxResponse", "maxResponseTokens") { it.ctx.maxResponse.toString() }
+        simple("original") { c -> if (c.ctx.used.add("original")) c.ctx.originalText.orEmpty() else "" }
+        MacroRegistry.register(MacroDef(listOf("reverse"), 1, 1) { it.arg(0).reversed() })
+        MacroRegistry.register(MacroDef(listOf("pick"), 1) { c ->
+            c.args.randomOrNull(Random(c.ctx.pickSeed * 31 + c.args.joinToString("::").hashCode())) ?: ""
+        })
+        MacroRegistry.register(MacroDef(listOf("if"), 0, 1, scoped = true) { c ->
+            var cond = c.arg(0).trim()
+            val neg = cond.startsWith("!")
+            if (neg) cond = cond.substring(1).trim()
+            val truthy = cond.isNotEmpty() && cond.lowercase() !in setOf("false", "0")
+            val (a, b) = MacroEngine.splitElse(c.scopeContent.orEmpty())
+            (if (truthy != neg) a else b.orEmpty()).trim()
+        })
         simple("trim") { "{{trim}}" }
-        simple("time", "isotime") { it.ctx.now.format(DateTimeFormatter.ofPattern("HH:mm")) }
-        simple("date", "isodate") { it.ctx.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) }
         simple("weekday") { it.ctx.now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH) }
         MacroRegistry.register(MacroDef(listOf("outlet"), 1, 1) { it.ctx.outlets[it.arg(0).trim()] ?: "" })
         MacroRegistry.register(MacroDef(listOf("//")) { "" })

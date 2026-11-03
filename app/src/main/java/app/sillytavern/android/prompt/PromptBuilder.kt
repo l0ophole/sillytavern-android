@@ -38,6 +38,8 @@ data class PromptInput(
     val promptManager: PromptManagerPreset = DefaultPresets.promptManager(),
     val systemPrompt: SystemPromptPreset? = null,
     val worldInfo: WorldInfoPrompt = WorldInfoPrompt(),
+    /** Variable store for `{{getvar}}`-style macros; null in tests and previews. */
+    val vars: app.sillytavern.android.macro.VariableStore? = null,
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
@@ -47,7 +49,7 @@ object PromptBuilder {
     /** Text-completion prompt (instruct template optional) plus the stop strings it implies. */
     fun buildText(i: PromptInput, instruct: InstructTemplate?, context: ContextTemplate): FormattedPrompt {
         val pm = i.promptManager
-        val ctx = PromptSupport.macroContext(i)
+        val ctx = PromptSupport.macroContext(i).copy(instruct = instruct)
         fun x(s: String) = Macros.expand(s, ctx).trim()
         fun mainContent() = pm.prompts.firstOrNull { it.identifier == "main" }?.content.orEmpty()
         fun jailbreakContent() = pm.prompts.firstOrNull { it.identifier == "jailbreak" }?.content.orEmpty()

@@ -3,7 +3,7 @@ package app.sillytavern.android.macro
 import app.sillytavern.android.chat.MacroContext
 import java.util.concurrent.ConcurrentHashMap
 
-class MacroCall(val ctx: MacroContext, val args: List<String>, val scopeContent: String?) {
+class MacroCall(val ctx: MacroContext, val args: List<String>, val scopeContent: String?, val name: String = "") {
     fun arg(i: Int) = args.getOrElse(i) { "" }
 }
 
@@ -26,9 +26,12 @@ object MacroRegistry {
 
     fun register(def: MacroDef) { def.names.forEach { defs[it.lowercase()] = def } }
 
+    private val dynamic = java.util.concurrent.CopyOnWriteArrayList<(String) -> MacroDef?>()
+    fun registerDynamic(f: (String) -> MacroDef?) { dynamic.add(f) }
+
     fun find(name: String): MacroDef? {
         ensureLoaded()
-        return defs[name.lowercase()]
+        return defs[name.lowercase()] ?: dynamic.firstNotNullOfOrNull { it(name) }
     }
 
     private fun ensureLoaded() {

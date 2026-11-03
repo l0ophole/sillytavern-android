@@ -11,6 +11,8 @@ import app.sillytavern.android.api.usesTextPrompt
 import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
+import app.sillytavern.android.macro.VariableStore
+import kotlinx.serialization.json.JsonObject
 import app.sillytavern.android.prompt.*
 import app.sillytavern.android.worldinfo.*
 import java.io.File
@@ -39,6 +41,7 @@ class ChatController(
     private val counterFor: (BackendType) -> TokenCounter = { ApproxTokenCounter },
     private val worlds: WorldBookRepository? = null,
     private val toolRegistry: ToolRegistry = EmptyToolRegistry,
+    private val updateSettings: ((AppSettings) -> AppSettings) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -92,6 +95,21 @@ class ChatController(
         _state.update { it.copy(chat = WorldInfoRunner.withChatBook(cur, name)) }
         persist()
     }
+
+    /** Variables for macros/commands: local ones live in the chat header, global ones in settings. */
+    fun variableStore(): VariableStore = VariableStore(
+        getLocal = { (chat?.header?.get("chat_metadata") as? JsonObject)?.get("variables") as? JsonObject ?: JsonObject(emptyMap()) },
+        setLocal = { v ->
+            _state.update { st ->
+                val c = st.chat ?: return@update st
+                val meta = c.header["chat_metadata"] as? JsonObject ?: JsonObject(emptyMap())
+                st.copy(chat = c.copy(header = JsonObject(c.header + ("chat_metadata" to JsonObject(meta + ("variables" to v))))))
+            }
+            persist()
+        },
+        getGlobal = { settings().globalVariables },
+        setGlobal = { g -> updateSettings { it.copy(globalVariables = g) } },
+    )
 
     fun clearError() = _state.update { it.copy(error = null) }
     fun consumeImpersonation() = _state.update { it.copy(impersonation = null) }
@@ -175,6 +193,7 @@ class ChatController(
             promptManager = s.activePromptManager,
             // System-prompt presets belong to text completion; chat completion uses the preset's own main prompt.
             systemPrompt = if (textMode) s.activeSystemPrompt else null,
+            vars = variableStore(),
         )
         // Re-rolls of an existing reply must not advance sticky/cooldown timers.
         val dryRun = trigger != "normal"

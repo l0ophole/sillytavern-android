@@ -42,13 +42,13 @@ object MacroEngine {
                 if (close < 0) { sb.append(n.raw); i++; continue }
                 val content = nodes.subList(i + 1, close).raw()
                 val args = n.args.map { eval(it, ctx) }
-                sb.append(run(def, n, MacroCall(ctx, args, content)))
+                sb.append(run(def, n, MacroCall(ctx, args, content, n.name)))
                 i = close + 1
                 continue
             }
             val args = n.args.map { eval(it, ctx) }
             if (args.size < def.minArgs || args.size > def.maxArgs) { sb.append(n.raw); i++; continue }
-            sb.append(run(def, n, MacroCall(ctx, args, null)))
+            sb.append(run(def, n, MacroCall(ctx, args, null, n.name)))
             i++
         }
         return sb.toString()

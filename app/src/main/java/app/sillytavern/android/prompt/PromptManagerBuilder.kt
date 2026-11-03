@@ -14,6 +14,14 @@ internal object PromptSupport {
         description = i.card.description, personality = i.card.personality,
         scenario = i.card.scenario, persona = i.persona.description,
         outlets = i.worldInfo.outlets,
+        charPrompt = i.card.systemPrompt, mesExamplesRaw = i.card.messageExample,
+        mesExamples = i.card.messageExample, creatorNotes = i.card.creatorNotes,
+        firstMessage = i.card.firstMessage, charVersion = i.card.characterVersion,
+        depthPrompt = (((i.card.raw["extensions"] as? kotlinx.serialization.json.JsonObject)?.get("depth_prompt") as? kotlinx.serialization.json.JsonObject)
+            ?.get("prompt") as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty(),
+        maxPrompt = i.maxContextTokens, maxResponse = i.maxResponseTokens,
+        chat = app.sillytavern.android.chat.ChatMacroView(i.history),
+        vars = i.vars,
     )
 
     /** World Info depth entries as (depth from end) -> messages. */
