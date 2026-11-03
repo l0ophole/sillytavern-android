@@ -12,6 +12,7 @@ import app.sillytavern.android.card.StoredCharacter
 import app.sillytavern.android.group.*
 import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.CharacterNote
+import app.sillytavern.android.data.SummarySettings
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.command.*
 import app.sillytavern.android.macro.VariableStore
@@ -39,6 +40,8 @@ data class ChatUiState(
     val members: List<StoredCharacter> = emptyList(),
     val groupQueue: List<String> = emptyList(),
     val autoMode: Boolean = false,
+    /** A summary is being written by the model. */
+    val summarizing: Boolean = false,
 )
 
 /**
@@ -289,6 +292,8 @@ class ChatController(
         }
         override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
+        override fun currentSummary(): String = summaryText()
         override suspend fun createBranch(mesId: Int): String? = this@ChatController.createBranch(mesId)
         override suspend fun createCheckpoint(mesId: Int, name: String?): String? = this@ChatController.createCheckpoint(mesId, name)
         override suspend fun openCheckpoint(mesId: Int): Boolean = this@ChatController.openCheckpoint(mesId)
@@ -328,7 +333,7 @@ class ChatController(
             maxContextTokens = profile.sampler.maxContextTokens, maxResponseTokens = profile.sampler.maxResponseTokens,
             counter = counterFor(profile.type), promptManager = s.activePromptManager,
             systemPrompt = if (profile.type.usesTextPrompt) s.activeSystemPrompt else null, vars = variableStore(), regexScripts = scripts(),
-            extensionPrompts = extensionPromptsFor(history, character),
+            extensionPrompts = if (useHistory) extensionPromptsFor(history, character) else emptyList(),
         )
         val req = makeRequest(input, profile, s)
         val backend = backendFor(profile.type)
@@ -521,6 +526,45 @@ class ChatController(
         mutate { l -> l.toMutableList().also { it[at] = Summary.withMemory(it[at], text) } }
     }
 
+    /**
+     * Asks the model to summarize the chat (or just [text] when given) with the configured prompt. Without [text] the result is stored
+     * on the newest message (`extra.memory`) and returned; blank model output is an error.
+     */
+    suspend fun summarizeNow(text: String? = null): String {
+        val prompt = Summary.prompt(settings().summary)
+        if (text != null) {
+            val out = quietGenerate("$prompt\n\n$text", useHistory = false)
+            if (out.isBlank()) throw CommandError("The model returned an empty summary")
+            return out
+        }
+        if (messages.isEmpty()) throw CommandError("There is nothing to summarize yet")
+        val file = chat?.file; val index = messages.lastIndex
+        val out = quietGenerate(prompt, useHistory = true)
+        if (out.isBlank()) throw CommandError("The model returned an empty summary")
+        // The chat may have been switched or edited while waiting.
+        if (chat?.file == file && index in messages.indices) mutate { l -> l.toMutableList().also { it[index] = Summary.withMemory(it[index], out) } }
+        return out
+    }
+
+    /** Background version of [summarizeNow] for the UI; failures show as an error. */
+    fun summarize() {
+        val st = _state.value
+        if (st.summarizing || st.generating || messages.isEmpty()) return
+        _state.update { it.copy(summarizing = true, error = null) }
+        scope.launch {
+            try { summarizeNow() }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(error = e.message ?: "Summary failed") } }
+            finally { _state.update { it.copy(summarizing = false) } }
+        }
+    }
+
+    private fun maybeAutoSummarize() {
+        if (!batch && Summary.due(messages, settings().summary)) summarize()
+    }
+
+    fun setSummarySettings(f: (SummarySettings) -> SummarySettings) = updateSettings { it.copy(summary = f(it.summary)) }
+
     private fun makeRequest(input: PromptInput, profile: app.sillytavern.android.data.ConnectionProfile, s: AppSettings): GenerationRequest =
         if (profile.type.usesTextPrompt) {
             val formatted = PromptBuilder.buildText(input, s.activeInstruct, s.activeContext)
@@ -672,7 +716,7 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = batch, error = failure) }
-                    if (failure == null && targetIndex != null && isActive) fireAuto(QuickReplyService.Trigger.AI)
+                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize() }
                 }
             }
         }
@@ -831,6 +875,7 @@ class ChatController(
                 withContext(NonCancellable) {
                     batch = false
                     _state.update { it.copy(generating = job?.isActive == true, groupQueue = emptyList()) }
+                    if (_state.value.error == null && isActive) maybeAutoSummarize()
                 }
             }
         }

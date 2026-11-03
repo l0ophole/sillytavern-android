@@ -149,3 +149,28 @@ See docs/ROADMAP.md.
 - Deleting a character does not remove it from groups (it shows as "missing"); group chats of a deleted group are removed, character chats are kept
 - Auto mode keeps running while the chat screen is closed until another chat is opened
 
+
+## Done (feature set 7: chat features) — plan: docs/plans/06-chat-features.md
+- Extension prompts (`prompt/ExtensionPrompt.kt`, `PromptInput.extensionPrompts`): position 0 in prompt / 1 in chat at depth / 2 before prompt, role 0-2. Chat completion puts 0/2 right after/before the `main` prompt (front/back of the pre-history block when `main` is off) and 1 into the depth injections next to World Info; text completion fills `anchorAfter`/`anchorBefore` and the same depth injections. Macros are expanded in their content
+- Author's Note (`chat/AuthorsNote.kt`, `ChatMeta.kt`): `note_prompt/interval/depth/position/role` in `chat_metadata` (ST keys), defaults in `AppSettings.note`; due when interval is 1, or `userMessages % interval == 0` (0 = never); character note (`AppSettings.characterNotes`, replace/before/after) for single-character chats; dialog from the chat menu with "save as default"
+- Personas: avatar (`User Avatars/<id>.png`, picked image is re-encoded as PNG), title, description position (in prompt / top AN / bottom AN / at depth / not sent), depth, role, lorebook (scanned after the chat book, before global/character books), default persona, character locks (`Persona.characters`), chat lock (`chat_metadata.persona`), optional auto-lock. Chat open applies chat lock > character lock > default > current. Settings list shows avatars and ★ default; chat menu has a persona/lock dialog
+- Branches and checkpoints (`chat/ChatBranching.kt`): message action "Branch from here" (copies `0..N`, selected swipe kept, opens `<chat> - Branch #n`, source message gets `extra.branches`), "Create checkpoint" (`<chat> - Checkpoint #n` or a typed name, stays in the chat, `extra.bookmark_link`, flag button on the bubble), "Back to main chat" via `main_chat`. Works for group chats (the new chat id is added to the group). Commands: `/branch-create /checkpoint-create /checkpoint-go /checkpoint-exit /checkpoint-get /checkpoint-list /checkpoint-parent`
+- Hide/unhide per message in the message actions (same `extra.hidden` as `/hide`)
+- Import/export (`chat/ChatIo.kt`): ST JSONL (Chub swipe objects flattened), Ooba, Agnai, CAI Tools (one chat per history), Kobold Lite; export as JSONL or `Name: text` text (system lines skipped, `display_text` used). Chats dialog has Import and a per-chat menu (export, delete). Imported files are `<name> - <stamp> imported.jsonl`
+- Summary (`chat/Summary.kt`): stored in `extra.memory` of a message; injected from the newest summary found in the prompt history (so regenerating an older message never sees a later summary) with a template, position, depth, role; "Summarize now" and optional automatic summaries (every N chat lines, frozen switch) through the main API; `/summarize [text]`, `/getsummary`, `{{summary}}` macro; dialog from the chat menu
+- Verification: 574 JVM unit tests pass (78 new), lint has no errors, debug APK builds
+- Tests: new suites for the extension prompts, Author's Note, summary, persona locks/positions, branches/checkpoints/hide, import/export, summarization, persona lorebook ordering
+
+## Rulings / deviations (set 7)
+- Executed on `main` without a worktree, native (no subagents); UI tasks compile + lint only
+- Persona ids stay UUIDs (ST uses the avatar file name), so persona sets are not interchangeable with ST's `settings.json`
+- The summary prompt is sent as the final user message of a quiet generation (not a system/quiet-prompt injection); the model's reply is trimmed and stored as is
+- Author's Note counts all user messages of the chat (hidden ones too), as ST does; it is not scanned by World Info
+- A default persona is applied on every chat open without a lock (as ST), which overrides a persona picked by hand for that session
+- Manual edits change the current summary in place; automatic ones add a new summary on the newest message and leave older ones
+
+## Not verified (set 7)
+- UI never run on a device/emulator (dialogs, avatar picker, import/export via the document picker, checkpoint flag)
+- Import formats are checked against hand-written samples taken from ST's converters, not real exports; RisuAI chats and Chub-specific metadata are not imported
+- No live model call for summaries (fake backend only); `{{words}}` is advisory, there is no word-limit forcing
+- Not implemented: Extras/WebLLM summary sources, raw/non-blocking summary builders, persona avatar in message bubbles (set 8), persona import/export, Author's Note WI scanning, auto-summary while the chat screen is closed

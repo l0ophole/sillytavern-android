@@ -64,6 +64,10 @@ object ChatCommands {
             if (id !in 0 until n) throw CommandError("Message $id not found")
             return id
         }
+        cmd("summarize", "summary", help = "summarize [text] - summarizes the chat (stored as the chat summary) or the given text; returns the summary.", usesPipe = false) { c ->
+            c.host.summarize(c.unnamed.takeIf { it.isNotBlank() })
+        }
+        cmd("getsummary", help = "Returns the current chat summary.", usesPipe = false) { c -> c.host.currentSummary() }
         cmd("branch-create", help = "branch-create [mesId] - copies the chat up to a message into a new branch and opens it; returns its name.", usesPipe = false) { c ->
             c.host.createBranch(mesId(c)).orEmpty()
         }

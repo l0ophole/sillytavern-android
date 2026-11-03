@@ -10,7 +10,7 @@ Sets are small and ordered by dependency. Each set gets a plan in docs/plans/ be
 | 4 | Backends (DONE) | Google, OpenRouter, Mistral, Cohere, Groq, DeepSeek, etc.; KoboldAI, NovelAI, Horde, Ollama native, tabby/aphrodite; model list fetch; reasoning/thinking display; tool calling | 2 | - |
 | 5 | Macros + commands (DONE) | full macro set, variables, slash-command engine, Quick Replies, regex scripts | 2 | 6,12 |
 | 6 | Groups + tags (DONE) | group chats, activation strategies, tags/folders, character bulk ops, favorites | 3,5 | - |
-| 7 | Chat features | message bookmarks/checkpoints/branches, hide messages, chat import/export (ST JSONL, other formats), personas with avatars/lock, author's note, summarization | 2 | 9 |
+| 7 | Chat features (DONE) | message bookmarks/checkpoints/branches, hide messages, chat import/export (ST JSONL, other formats), personas with avatars/lock, author's note, summarization | 2 | 9 |
 | 8 | Appearance | themes, backgrounds, avatar styles, markdown/HTML rendering, i18n, moving UI, tablet layout | 1 | - |
 | 9 | Media extensions | TTS (system + cloud), STT, image gen (A1111/Comfy/NovelAI), gallery, attachments, captioning (remote) | 7 | - |
 | 10 | Local ML | embeddings + vector memory/data bank, expression classifier/sprites, ONNX Runtime Mobile | 7 | - |
