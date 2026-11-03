@@ -300,6 +300,7 @@ class ChatController(
         }
         override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun speak(text: String, voice: String?) { speakText(text, voice) }
         override suspend fun caption(mesId: Int?, prompt: String?): String = captionMessage(mesId ?: messages.indexOfLast { it.imagePath != null }, prompt)
         override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
         override fun currentSummary(): String = summaryText()
@@ -630,6 +631,32 @@ class ChatController(
 
     // ---------------------------------------------------------------- media
 
+    /** Text-to-speech; set by the app container. */
+    var tts: TtsService? = null
+    private var speakJob: Job? = null
+
+    /** Speaks message [index] (what is read depends on the TTS settings); errors surface as a UI error. */
+    fun speakMessage(index: Int) {
+        val m = messages.getOrNull(index) ?: return
+        val svc = tts ?: return
+        speakJob?.cancel()
+        speakJob = scope.launch {
+            try { svc.speak(displayText(m), m.name) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(error = "Speech failed: ${e.message}") } }
+        }
+    }
+
+    fun stopSpeaking() { speakJob?.cancel(); tts?.stop() }
+
+    suspend fun speakText(text: String, voice: String?) {
+        val svc = tts ?: throw CommandError("Text-to-speech is not available")
+        svc.speak(text, voice.orEmpty(), voiceOverride = voice?.takeIf { it.isNotBlank() }?.let { v ->
+            val s = settings().media.tts
+            s.voiceMap.entries.firstOrNull { it.key.equals(v, true) }?.value ?: v
+        })
+    }
+
     /** Folder (inside `user/images`) for the open chat's images. */
     fun imageFolder(): String = MessageMedia.folderFor(group?.name ?: _state.value.character?.card?.name ?: "chat")
 
@@ -806,7 +833,7 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = batch, error = failure) }
-                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize() }
+                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
                 }
             }
         }

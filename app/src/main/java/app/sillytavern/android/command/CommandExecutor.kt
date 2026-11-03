@@ -46,6 +46,8 @@ interface CommandHost {
     suspend fun switchPersona(name: String): Boolean = unavailable()
     suspend fun summarize(text: String?): String = unavailable()
     /** Captions the image of a message (default: the newest with an image) and returns the caption. */
+    /** Reads [text] aloud; [voice] is a character name from the voice map or a provider voice. */
+    suspend fun speak(text: String, voice: String?): Unit = unavailable()
     suspend fun caption(mesId: Int?, prompt: String?): String = unavailable()
     fun currentSummary(): String = ""
     suspend fun createBranch(mesId: Int): String? = unavailable()
