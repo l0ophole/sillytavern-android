@@ -36,6 +36,17 @@ class ChatRepository(private val paths: StoragePaths) {
         return Chat(file, header, msgs).also(::save)
     }
 
+    /** Creates a group chat file (ST header with placeholder names) holding [initial] messages. */
+    fun createGroupChat(file: File, initial: List<ChatMessage>): Chat {
+        val header = buildJsonObject {
+            put("chat_metadata", JsonObject(emptyMap()))
+            put("user_name", "unused")
+            put("character_name", "unused")
+        }
+        file.parentFile?.mkdirs()
+        return Chat(file, header, initial).also(::save)
+    }
+
     fun load(file: File): Chat {
         val lines = file.readLines().filter { it.isNotBlank() }
         require(lines.isNotEmpty()) { "Empty chat file" }

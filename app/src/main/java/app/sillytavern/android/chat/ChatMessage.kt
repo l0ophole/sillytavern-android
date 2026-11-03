@@ -42,6 +42,10 @@ data class ChatMessage(
         if (!r.isNullOrBlank()) put("reasoning", r)
     })
 
+    /** Group chats: avatar file name (with extension) of the member who wrote this message. */
+    val originalAvatar: String? get() = (rest["original_avatar"] as? JsonPrimitive)?.contentOrNull
+    fun withOriginalAvatar(a: String): ChatMessage = copy(rest = JsonObject(rest + ("original_avatar" to JsonPrimitive(a))))
+
     fun addSwipe(t: String) = copy(swipes = swipes + t, swipeId = swipes.size)
     fun selectSwipe(i: Int) = copy(swipeId = i.coerceIn(0, (swipes.size - 1).coerceAtLeast(0)))
 

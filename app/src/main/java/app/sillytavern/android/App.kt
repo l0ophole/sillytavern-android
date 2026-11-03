@@ -8,6 +8,7 @@ import app.sillytavern.android.api.Backends
 import app.sillytavern.android.card.CharacterRepository
 import app.sillytavern.android.chat.ChatController
 import app.sillytavern.android.chat.ChatRepository
+import app.sillytavern.android.group.GroupRepository
 import app.sillytavern.android.worldinfo.WorldBookRepository
 import app.sillytavern.android.data.*
 import app.sillytavern.android.prompt.ApproxTokenCounter
@@ -23,6 +24,7 @@ class AppContainer(app: Application) {
     val secrets = SecretStore(paths.secretsFile, AesGcmCrypto.keystore())
     val characters = CharacterRepository(paths)
     val chats = ChatRepository(paths)
+    val groups = GroupRepository(paths)
     val worlds = WorldBookRepository(paths)
     val regexScripts = RegexRepository(paths)
     val quickReplyRepo = QuickReplyRepository(paths)
