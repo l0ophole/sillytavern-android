@@ -3,6 +3,7 @@ package app.sillytavern.android
 import app.sillytavern.android.appearance.BackgroundRepository
 import app.sillytavern.android.media.*
 import app.sillytavern.android.memory.*
+import app.sillytavern.android.tools.*
 import app.sillytavern.android.regex.RegexRepository
 import app.sillytavern.android.quickreply.QuickReplyRepository
 import app.sillytavern.android.quickreply.QuickReplyService
@@ -45,6 +46,8 @@ class AppContainer(app: Application) {
         paths, { settings.settings.value.memory }, { secrets.get(MemorySettings.KEY_EMBEDDINGS) },
     )
     val sprites = SpriteRepository(paths.sprites)
+    val translator = TextTranslator({ settings.settings.value.tools.translate }, { secrets.get(ToolsSettings.KEY_TRANSLATE) })
+    val webSearch = WebSearchService({ settings.settings.value.tools.search }, { secrets.get(ToolsSettings.KEY_SEARCH) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
@@ -63,6 +66,8 @@ class AppContainer(app: Application) {
         mediaKey = { secrets.get(it) },
         memory = memory,
         sprites = sprites,
+        translator = translator,
+        webSearch = webSearch,
     )
 
     val quickReplies = QuickReplyService(

@@ -27,6 +27,9 @@ open class ChatFeaturesTestBase {
     var spriteRepo: app.sillytavern.android.memory.SpriteRepository? = null
     var memoryService: app.sillytavern.android.memory.MemoryService? = null
 
+    var translatorSvc: app.sillytavern.android.tools.TextTranslator? = null
+    var searchSvc: app.sillytavern.android.tools.WebSearchService? = null
+
     fun TestScope.controller(): ChatController = ChatController(
         ChatRepository(paths), { backend }, { cfg }, { "key" }, this,
         worlds = app.sillytavern.android.worldinfo.WorldBookRepository(paths),
@@ -34,6 +37,8 @@ open class ChatFeaturesTestBase {
         mediaRoot = paths.root,
         memory = memoryService,
         sprites = spriteRepo,
+        translator = translatorSvc,
+        webSearch = searchSvc,
     )
 
     fun lastContents() = requests.last().messages.map { it.content }

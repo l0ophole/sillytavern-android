@@ -170,7 +170,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
         Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(Modifier.widthIn(max = columnDp).fillMaxSize().padding(horizontal = 12.dp), state = listState, verticalArrangement = Arrangement.spacedBy(if (look.messageStyle == app.sillytavern.android.appearance.MessageStyle.DOCUMENT) 14.dp else 8.dp)) {
             itemsIndexed(messages) { i, m ->
-                val shown = remember(m.text, m.isUser, appSettings.regexEnabled, state.character) { ctl.displayText(m) }
+                val shown = remember(m.text, m.displayOverride, m.isUser, appSettings.regexEnabled, state.character) { ctl.displayText(m) }
                 val shownReasoning = remember(m.reasoning, appSettings.regexEnabled, state.character) { m.reasoning?.let(ctl::displayReasoning) }
                 val avatar = remember(m.name, m.isUser, m.originalAvatar, state.character, state.group, appSettings.personas, appSettings.activePersonaId) {
                     when {
@@ -208,6 +208,10 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                         val idx = i; actionsFor = null
                         scope.launch { try { ctl.captionMessage(idx) } catch (e: Exception) { snackbar.showSnackbar("Caption failed: ${e.message}") } }
                     }) { Text(tr(if (messages[i].imageCaption != null) "Re-caption image" else "Caption image")) }
+                    if (messages[i].text.isNotBlank()) TextButton(onClick = {
+                        val idx = i; actionsFor = null
+                        scope.launch { try { ctl.toggleTranslation(idx) } catch (e: Exception) { snackbar.showSnackbar("Translation failed: ${e.message}") } }
+                    }) { Text(tr(if (messages[i].displayOverride != null) "Show original" else "Translate")) }
                     TextButton(onClick = { clipboard.setText(AnnotatedString(messages[i].text)); actionsFor = null }) { Text(tr("Copy")) }
                     TextButton(onClick = { ctl.setHidden(i, !messages[i].isHidden); actionsFor = null }) {
                         Text(tr(if (messages[i].isHidden) "Unhide (include in prompt)" else "Hide (exclude from prompt)"))

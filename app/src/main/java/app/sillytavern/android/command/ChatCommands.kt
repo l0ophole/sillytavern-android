@@ -76,6 +76,12 @@ object ChatCommands {
         cmd("caption", help = "caption [mes=N] [prompt] - captions the image of a message (default: the newest image) with the main model; returns the caption.", usesPipe = false) { c ->
             c.host.caption(c.named["mes"]?.trim()?.toIntOrNull(), c.unnamed.takeIf { it.isNotBlank() })
         }
+        cmd("translate", help = "translate [to=code] text - translates the text into the language (default: the display language of the translation settings).", usesPipe = false) { c ->
+            c.host.translate(c.unnamed, c.named["to"]?.trim()?.takeIf { it.isNotEmpty() })
+        }
+        cmd("websearch", "search", help = "websearch query - runs a web search with the configured provider and returns the results as text.", usesPipe = false) { c ->
+            c.host.webSearch(c.unnamed.trim())
+        }
         cmd("sprite", "emote", help = "sprite label - shows the sprite (expression) with that label for the current character.", usesPipe = false) { c ->
             val label = c.unnamed.trim()
             if (!c.host.setExpression(label)) throw CommandError("No expression \"$label\". Available: ${c.host.expressionLabels().joinToString(", ")}")

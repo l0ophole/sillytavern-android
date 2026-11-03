@@ -45,6 +45,8 @@ interface CommandHost {
     suspend fun setChatBook(name: String?): Unit = unavailable()
     suspend fun switchPersona(name: String): Boolean = unavailable()
     suspend fun summarize(text: String?): String = unavailable()
+    suspend fun translate(text: String, to: String?): String = unavailable()
+    suspend fun webSearch(query: String): String = unavailable()
     /** Captions the image of a message (default: the newest with an image) and returns the caption. */
     /** Reads [text] aloud; [voice] is a character name from the voice map or a provider voice. */
     suspend fun speak(text: String, voice: String?): Unit = unavailable()

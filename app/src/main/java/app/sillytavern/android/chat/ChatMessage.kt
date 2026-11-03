@@ -42,6 +42,20 @@ data class ChatMessage(
         if (!r.isNullOrBlank()) put("reasoning", r)
     })
 
+    /**
+     * Text shown instead of the message (translation). SillyTavern keeps it in `extra.display_text`; `display_text_for`
+     * remembers which text it belongs to, so an edited or swiped message falls back to its own text.
+     */
+    val displayOverride: String? get() {
+        val shown = (extra["display_text"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null
+        val forHash = (extra["display_text_for"] as? JsonPrimitive)?.contentOrNull
+        return shown.takeIf { forHash == null || forHash == text.hashCode().toString() }
+    }
+
+    fun withDisplayText(shown: String?): ChatMessage =
+        if (shown == null) withExtra("display_text", null).withExtra("display_text_for", null)
+        else withExtra("display_text", JsonPrimitive(shown)).withExtra("display_text_for", JsonPrimitive(text.hashCode().toString()))
+
     /** Checkpoint chat linked from this message (`extra.bookmark_link`). */
     val bookmarkLink: String? get() = (extra["bookmark_link"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
     /** Branch chats created from this message (`extra.branches`). */

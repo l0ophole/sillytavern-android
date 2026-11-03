@@ -81,6 +81,9 @@ class ChatController(
     private val memory: app.sillytavern.android.memory.MemoryService? = null,
     /** Sprite folders, used to offer only labels the character has images for. */
     val sprites: app.sillytavern.android.memory.SpriteRepository? = null,
+    /** Message translation and web search (set 11); null disables them. */
+    private val translator: app.sillytavern.android.tools.TextTranslator? = null,
+    private val webSearch: app.sillytavern.android.tools.WebSearchService? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -241,7 +244,7 @@ class ChatController(
     }
 
     /** Text as shown in the chat bubble: markdown-only scripts applied, stored text untouched. */
-    fun displayText(m: ChatMessage): String = regexed(m.text, placementOf(m), RegexParams(isMarkdown = true))
+    fun displayText(m: ChatMessage): String = regexed(m.displayOverride ?: m.text, placementOf(m), RegexParams(isMarkdown = true))
 
     /** Reasoning text as shown (REASONING placement). */
     fun displayReasoning(text: String): String = regexed(text, Placement.REASONING, RegexParams(isMarkdown = true))
@@ -316,6 +319,8 @@ class ChatController(
         override fun expressionLabels(): List<String> = expressionLabelsFor()
         override suspend fun classifyExpression(text: String): String = classifyText(text)
         override suspend fun caption(mesId: Int?, prompt: String?): String = captionMessage(mesId ?: messages.indexOfLast { it.imagePath != null }, prompt)
+        override suspend fun translate(text: String, to: String?): String = translateText(text, to)
+        override suspend fun webSearch(query: String): String = webSearch?.search(query) ?: throw CommandError("Web search is not available")
         override suspend fun summarize(text: String?): String = this@ChatController.summarizeNow(text)
         override fun currentSummary(): String = summaryText()
         override suspend fun createBranch(mesId: Int): String? = this@ChatController.createBranch(mesId)
@@ -626,6 +631,24 @@ class ChatController(
         st.pendingImage?.let { msg = msg.withImage(it) }
         st.pendingFile?.let { msg = msg.withFile(it) }
         _state.update { it.copy(pendingImage = null, pendingFile = null) }
+        val ts = settings().tools.translate
+        if (translator != null && ts.translatesInputs && msg.text.isNotBlank()) {
+            // The model reads the internal language; the message keeps what was typed as its display text.
+            _state.update { it.copy(generating = true) }
+            job = scope.launch {
+                val typed = msg.text
+                try { msg = msg.withText(translator.translate(typed, ts.internal) { quietGenerate(it, false) }).let { it.withDisplayText(typed) } }
+                catch (e: CancellationException) { _state.update { it.copy(generating = false) }; throw e }
+                catch (e: Exception) { _state.update { it.copy(notice = "Translation failed: ${e.message}") } }
+                _state.update { it.copy(generating = false) }
+                continueSend(msg, text)
+            }
+            return
+        }
+        continueSend(msg, text)
+    }
+
+    private fun continueSend(msg: ChatMessage, text: String) {
         mutate { it + msg }
         fireAuto(QuickReplyService.Trigger.USER)
         val idx = messages.lastIndex
@@ -861,7 +884,7 @@ class ChatController(
             // A fresh reply starts without the previous reply's reasoning (continue keeps it).
             if (targetIndex != null && !appendTo) setTargetReasoning(targetIndex, null)
             try {
-                val recalled = recall(memoryContext)
+                val recalled = recall(memoryContext) + listOfNotNull(searchPrompt(history))
                 val finalReq = if (recalled.isEmpty()) req
                 else makeRequest(worldInfoInput.copy(extensionPrompts = worldInfoInput.extensionPrompts + recalled), profile, s)
                 val backend = backendFor(profile.type)
@@ -893,7 +916,7 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = batch, error = failure) }
-                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); updateExpression(targetIndex); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
+                    if (failure == null && targetIndex != null && isActive) { fireAuto(QuickReplyService.Trigger.AI); maybeAutoSummarize(); translateReply(targetIndex); updateExpression(targetIndex); settings().media.tts.let { t -> if (t.enabled && t.autoPlay) speakMessage(targetIndex) } }
                 }
             }
         }
@@ -944,6 +967,49 @@ class ChatController(
         val text = messages.getOrNull(index)?.text?.takeIf { it.isNotBlank() } ?: return
         try { classifyText(text).let { l -> _state.update { it.copy(expression = l) } } }
         catch (e: CancellationException) { throw e } catch (_: Exception) {}
+    }
+
+    // ---------------------------------------------------------------- translation + web search
+
+    /** Translates a reply into the display language after generation when response translation is on (failures only show a notice). */
+    private suspend fun translateReply(index: Int) {
+        val ts = settings().tools.translate
+        if (translator == null || !ts.translatesResponses) return
+        val m = messages.getOrNull(index) ?: return
+        if (m.isUser || m.isSystem || m.text.isBlank()) return
+        try { setDisplayText(index, m.text, translator.translate(m.text, ts.target) { quietGenerate(it, false) }) }
+        catch (e: CancellationException) { throw e } catch (e: Exception) { _state.update { it.copy(notice = "Translation failed: ${e.message}") } }
+    }
+
+    private fun setDisplayText(index: Int, forText: String, shown: String?) = _state.update { st ->
+        val c = st.chat ?: return@update st
+        val m = c.messages.getOrNull(index) ?: return@update st
+        if (m.text != forText) return@update st // edited or swiped while the translation ran
+        st.copy(chat = c.copy(messages = c.messages.toMutableList().also { it[index] = m.withDisplayText(shown) })).also { persist() }
+    }
+
+    /** Message action: shows the translation of message [index] into the display language, or removes it when one is already shown. */
+    suspend fun toggleTranslation(index: Int) {
+        val m = messages.getOrNull(index) ?: return
+        if (m.displayOverride != null) { setDisplayText(index, m.text, null); return }
+        val t = translator ?: throw CommandError("Translation is not available")
+        val ts = settings().tools.translate
+        setDisplayText(index, m.text, t.translate(m.text, ts.target) { quietGenerate(it, false) })
+    }
+
+    /** `/translate`: translates arbitrary text into [to] (default: the display language). */
+    suspend fun translateText(text: String, to: String?): String {
+        val t = translator ?: throw CommandError("Translation is not available")
+        return t.translate(text, to ?: settings().tools.translate.target) { quietGenerate(it, false) }
+    }
+
+    /** Web search prompt for a generation, or null when search is off / not triggered; failures only show a notice. */
+    private suspend fun searchPrompt(history: List<ChatMessage>): ExtensionPrompt? {
+        val w = webSearch ?: return null
+        return try { w.prompt(history) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            _state.update { it.copy(notice = "Web search failed: ${e.message ?: e.javaClass.simpleName}") }
+            null
+        }
     }
 
     /** Vector memory / Data Bank prompts; a failing embedding service only produces a notice. */
