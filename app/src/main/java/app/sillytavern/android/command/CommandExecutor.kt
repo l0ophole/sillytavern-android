@@ -11,6 +11,7 @@ interface CommandHost {
     suspend fun echo(text: String, severity: String = "info")
     /** Runs a stored script (Quick Reply `set.label`); null when no such script exists. */
     suspend fun runStoredScript(name: String, executor: CommandExecutor): String? = null
+    val quickReplies: app.sillytavern.android.quickreply.QuickReplyAccess? get() = null
 
     // --- chat access (implemented by ChatController) ---
     suspend fun sendUser(text: String): Unit = unavailable()

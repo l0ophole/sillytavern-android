@@ -1,5 +1,8 @@
 package app.sillytavern.android
 
+import app.sillytavern.android.regex.RegexRepository
+import app.sillytavern.android.quickreply.QuickReplyRepository
+import app.sillytavern.android.quickreply.QuickReplyService
 import android.app.Application
 import app.sillytavern.android.api.Backends
 import app.sillytavern.android.card.CharacterRepository
@@ -21,19 +24,30 @@ class AppContainer(app: Application) {
     val characters = CharacterRepository(paths)
     val chats = ChatRepository(paths)
     val worlds = WorldBookRepository(paths)
+    val regexScripts = RegexRepository(paths)
+    val quickReplyRepo = QuickReplyRepository(paths)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tiktoken by lazy { TiktokenCounter() }
 
-    val chatController = ChatController(
+    val chatController: ChatController = ChatController(
         repo = chats,
         backendFor = { Backends.forType(it) },
         settings = { settings.settings.value },
         apiKey = { secrets.get("key:$it") },
         scope = scope,
         worlds = worlds,
+        regex = { card -> regexScripts.global() + (card?.let(regexScripts::scopedOf) ?: emptyList()) },
         updateSettings = { f -> settings.update(f) },
         counterFor = { if (it == BackendType.OPENAI) tiktoken else ApproxTokenCounter },
     )
+
+    val quickReplies = QuickReplyService(
+        quickReplyRepo, { settings.settings.value }, { f -> settings.update(f) },
+        chatSet = { chatController.chatQuickReplySet() }, setChatSet = { chatController.setChatQuickReplySet(it) },
+        characterKey = { chatController.characterFileName() }, automationIds = { chatController.automationIds() },
+    ).also { chatController.quickReplies = it }
+
+    init { chatController.runStartupQuickReplies() }
 }
 
 class SillyTavernApp : Application() {

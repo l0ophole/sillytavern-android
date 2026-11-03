@@ -13,6 +13,7 @@ import app.sillytavern.android.data.AppSettings
 import app.sillytavern.android.data.BackendType
 import app.sillytavern.android.command.*
 import app.sillytavern.android.macro.VariableStore
+import app.sillytavern.android.quickreply.QuickReplyService
 import app.sillytavern.android.regex.*
 import kotlinx.serialization.json.JsonObject
 import app.sillytavern.android.prompt.*
@@ -47,7 +48,7 @@ class ChatController(
     private val toolRegistry: ToolRegistry = EmptyToolRegistry,
     private val updateSettings: ((AppSettings) -> AppSettings) -> Unit = {},
     /** Global + character-scoped regex scripts for the open chat. */
-    private val regex: () -> List<RegexScript> = { emptyList() },
+    private val regex: (app.sillytavern.android.card.CharacterCard?) -> List<RegexScript> = { emptyList() },
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
@@ -65,12 +66,14 @@ class ChatController(
                 ?: createChat(character, s.activePersona.name)
         }
         _state.value = ChatUiState(character = character, chat = loaded)
+        fireAuto(QuickReplyService.Trigger.CHAT_CHANGE)
     }
 
     fun newChat() {
         val c = _state.value.character ?: return
         stop()
         _state.value = ChatUiState(character = c, chat = createChat(c, settings().activePersona.name))
+        fireAuto(QuickReplyService.Trigger.NEW_CHAT)
     }
 
     /** New chat seeded with the first greeting; alternate greetings become swipes of it (as in SillyTavern). */
@@ -117,10 +120,59 @@ class ChatController(
         setGlobal = { g -> updateSettings { it.copy(globalVariables = g) } },
     )
 
+    /** Set after construction (the service reads this controller's chat metadata). */
+    var quickReplies: QuickReplyService? = null
+    private var autoRunning = false
+
+    private fun chatMeta(): JsonObject = chat?.header?.get("chat_metadata") as? JsonObject ?: JsonObject(emptyMap())
+
+    private fun setChatMeta(key: String, value: kotlinx.serialization.json.JsonElement?) {
+        _state.update { st ->
+            val c = st.chat ?: return@update st
+            val meta = JsonObject(chatMeta().toMutableMap().also { if (value == null) it.remove(key) else it[key] = value })
+            st.copy(chat = c.copy(header = JsonObject(c.header + ("chat_metadata" to meta))))
+        }
+        persist()
+    }
+
+    /** Name of the Quick Reply set bound to this chat (chat_metadata.quickReply.set). */
+    fun chatQuickReplySet(): String? =
+        ((chatMeta()["quickReply"] as? JsonObject)?.get("set") as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+
+    fun setChatQuickReplySet(name: String?) = setChatMeta("quickReply",
+        name?.let { JsonObject(mapOf("set" to kotlinx.serialization.json.JsonPrimitive(it))) })
+
+    fun characterFileName(): String? = _state.value.character?.fileName
+
+    fun automationIds(): Set<String> = buildSet {
+        (chatMeta()["automationId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }?.let(::add)
+        ((_state.value.character?.card?.raw?.get("extensions") as? JsonObject)?.get("automation_id") as? kotlinx.serialization.json.JsonPrimitive)
+            ?.content?.takeIf { it.isNotBlank() }?.let(::add)
+    }
+
+    /** Runs Quick Replies flagged for [trigger]; slash scripts only, never re-entrant. */
+    fun fireAuto(trigger: QuickReplyService.Trigger) {
+        val svc = quickReplies ?: return
+        if (autoRunning) return
+        val list = svc.autoExecutable(trigger).filter { it.second.message.trimStart().startsWith("/") }
+        if (list.isEmpty()) return
+        autoRunning = true
+        scope.launch {
+            try {
+                for ((set, qr) in list) {
+                    val o = svc.run(set, qr, "", CommandExecutor(host), { Macros.expand(it, host.macroContext()) }, isAutoExecute = true)
+                    o.error?.let { e -> _state.update { it.copy(error = e) } }
+                }
+            } finally { autoRunning = false }
+        }
+    }
+
+    fun runStartupQuickReplies() = fireAuto(QuickReplyService.Trigger.STARTUP)
+
     fun clearError() = _state.update { it.copy(error = null) }
     fun consumeImpersonation() = _state.update { it.copy(impersonation = null) }
 
-    private fun scripts(): List<RegexScript> = if (settings().regexEnabled) regex() else emptyList()
+    private fun scripts(): List<RegexScript> = if (settings().regexEnabled) regex(_state.value.character?.card) else emptyList()
 
     private fun placementOf(m: ChatMessage) = if (m.isUser) Placement.USER_INPUT else Placement.AI_OUTPUT
 
@@ -151,6 +203,8 @@ class ChatController(
 
     private inner class ControllerHost : CommandHost {
         override val variables get() = variableStore()
+        override val quickReplies get() = this@ChatController.quickReplies
+        override suspend fun runStoredScript(name: String, executor: CommandExecutor): String? = this@ChatController.quickReplies?.runStored(name, executor)
         override fun macroContext(): MacroContext {
             val s = settings(); val c = _state.value.character
             return MacroContext(
@@ -238,6 +292,7 @@ class ChatController(
         if (text.isBlank() || _state.value.generating) return
         val persona = settings().activePersona.name
         mutate { it + ChatMessage.user(persona, regexed(text.trim(), Placement.USER_INPUT, RegexParams()).ifBlank { text.trim() }) }
+        fireAuto(QuickReplyService.Trigger.USER)
         generateNew()
     }
 
@@ -361,6 +416,7 @@ class ChatController(
                     }
                     persist()
                     _state.update { it.copy(generating = false, error = failure) }
+                    if (failure == null && targetIndex != null && isActive) fireAuto(QuickReplyService.Trigger.AI)
                 }
             }
         }

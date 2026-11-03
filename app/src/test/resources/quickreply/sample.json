@@ -1,0 +1,4 @@
+{"version":2,"name":"Tools","disableSend":false,"placeBeforeInput":true,"injectInput":true,"color":"rgba(10, 20, 30, 1)","onlyBorderColor":true,
+"qrList":[{"id":1,"icon":"","showLabel":false,"label":"Greet","title":"say hi","message":"/sys hello {{input}}","contextList":[],"preventAutoExecute":true,"isHidden":false,"executeOnStartup":false,"executeOnUser":true,"executeOnAi":false,"executeOnChatChange":false,"executeOnGroupMemberDraft":false,"executeOnNewChat":false,"executeBeforeGeneration":false,"automationId":""},
+{"id":2,"icon":"fa-star","showLabel":true,"label":"Hidden","title":"","message":"text","contextList":[{"set":"Other","isChained":false}],"preventAutoExecute":true,"isHidden":true,"executeOnStartup":false,"executeOnUser":false,"executeOnAi":false,"executeOnChatChange":false,"executeOnGroupMemberDraft":false,"executeOnNewChat":false,"executeBeforeGeneration":false,"automationId":"A1","futureField":1}],
+"idIndex":2}

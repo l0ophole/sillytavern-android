@@ -93,6 +93,7 @@ data class AppSettings(
     // --- Macros + commands (feature set 5) ---
     val globalVariables: Map<String, String> = emptyMap(),
     val regexEnabled: Boolean = true,
+    val quickReplies: app.sillytavern.android.quickreply.QuickReplySettings = app.sillytavern.android.quickreply.QuickReplySettings(),
 ) {
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()
     val activePersona get() = personas.firstOrNull { it.id == activePersonaId } ?: personas.first()
