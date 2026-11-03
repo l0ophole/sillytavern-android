@@ -42,6 +42,8 @@ data class PromptInput(
     val vars: app.sillytavern.android.macro.VariableStore? = null,
     /** Regex scripts applied to history copies (prompt-side) and World Info content. */
     val regexScripts: List<app.sillytavern.android.regex.RegexScript> = emptyList(),
+    /** Group chat: prefix each history message with its author's name (`Alice: text`). */
+    val groupNames: Boolean = false,
 )
 
 /** Builds prompts: chat-completion messages via the Prompt Manager, or one text prompt via instruct/context templates. */
@@ -80,7 +82,7 @@ object PromptBuilder {
         val all = inPrompt.mapIndexed { idx, m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
             PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT,
-                x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)))
+                PromptSupport.speaker(m, x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)), i, i.groupNames && instruct == null))
         }
         val wiInj = PromptSupport.depthInjections(i.worldInfo)
         val wiTokens = wiInj.values.flatten().sumOf { i.counter.count(it.content) + 4 }

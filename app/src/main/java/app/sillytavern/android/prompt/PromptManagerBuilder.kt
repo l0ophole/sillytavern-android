@@ -24,6 +24,10 @@ internal object PromptSupport {
         vars = i.vars,
     )
 
+    /** [text] prefixed with the message author's name when [prefix] is on (group chats); narrator lines are left alone. */
+    fun speaker(m: app.sillytavern.android.chat.ChatMessage, text: String, i: PromptInput, prefix: Boolean): String =
+        if (prefix && !m.isNarrator && m.name.isNotBlank() && text.isNotBlank()) "${m.name}: $text" else text
+
     /** Message text after regex scripts for the prompt (depth 0 = newest message). */
     fun regexed(m: app.sillytavern.android.chat.ChatMessage, depth: Int, i: PromptInput, ctx: MacroContext): String {
         if (i.regexScripts.isEmpty()) return m.text
@@ -112,7 +116,7 @@ object PromptManagerBuilder {
         var history = inPrompt.mapIndexed { idx, m ->
             val asUser = if (i.mode == GenerationMode.IMPERSONATE) !m.isUser else m.isUser
             PromptMessage(if (m.isNarrator) Role.SYSTEM else if (asUser) Role.USER else Role.ASSISTANT,
-                x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)))
+                PromptSupport.speaker(m, x(PromptSupport.regexed(m, inPrompt.size - 1 - idx, i, ctx)), i, i.groupNames))
         }
         if (history.isEmpty() && pm.sendIfEmpty.isNotBlank()) history = listOf(PromptMessage(Role.USER, x(pm.sendIfEmpty)))
         val newChat = x(pm.newChatPrompt).takeIf { it.isNotBlank() && histIdx >= 0 }?.let { PromptMessage(Role.SYSTEM, it) }
@@ -120,7 +124,7 @@ object PromptManagerBuilder {
         val fixed = pre + post + listOfNotNull(nudge, newChat) + injections.values.flatten()
         val budget = i.maxContextTokens - i.maxResponseTokens - fixed.sumOf { i.counter.count(it.content) + 4 }
         val kept = if (histIdx < 0) emptyList() else PromptSupport.trimHistory(history, budget, i.counter)
-            .map { if (pm.namesBehavior == 2) withName(it, i) else it }
+            .map { if (pm.namesBehavior == 2 && !i.groupNames) withName(it, i) else it }
 
         val withInjections = PromptSupport.injectAtDepth(kept, injections)
         val result = pre + listOfNotNull(newChat) + withInjections + post + listOfNotNull(nudge)
