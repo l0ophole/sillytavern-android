@@ -94,7 +94,11 @@ data class AppSettings(
     val globalVariables: Map<String, String> = emptyMap(),
     val regexEnabled: Boolean = true,
     val quickReplies: app.sillytavern.android.quickreply.QuickReplySettings = app.sillytavern.android.quickreply.QuickReplySettings(),
+    // --- Groups + tags (feature set 6) ---
+    val tags: List<app.sillytavern.android.tags.Tag> = emptyList(),
+    @kotlinx.serialization.SerialName("tag_map") val tagMap: Map<String, List<String>> = emptyMap(),
 ) {
+    val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()
     val activePersona get() = personas.firstOrNull { it.id == activePersonaId } ?: personas.first()
     val activePreset get() = presets.firstOrNull { it.id == activePresetId } ?: presets.firstOrNull() ?: PromptPreset()
