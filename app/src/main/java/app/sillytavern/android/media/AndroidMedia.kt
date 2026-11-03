@@ -71,3 +71,75 @@ class AndroidSpeechPlayer(private val context: Context) : SpeechPlayer {
 
     override fun voices(): List<String> = tts?.voices?.map { it.name }?.sorted().orEmpty()
 }
+
+/** [VoiceInput] on Android's SpeechRecognizer and MediaRecorder (AAC in MP4). Needs RECORD_AUDIO; untested outside a device. */
+class AndroidVoiceInput(private val context: Context) : VoiceInput {
+    private var recognizer: android.speech.SpeechRecognizer? = null
+    private var recorder: android.media.MediaRecorder? = null
+    private var file: File? = null
+
+    override suspend fun listen(language: String): String {
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(context)) throw IllegalStateException("Speech recognition is not available on this device")
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            suspendCancellableCoroutine { cont ->
+                val r = android.speech.SpeechRecognizer.createSpeechRecognizer(context)
+                recognizer = r
+                r.setRecognitionListener(object : android.speech.RecognitionListener {
+                    override fun onResults(results: android.os.Bundle?) {
+                        r.destroy(); recognizer = null
+                        val text = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                        if (cont.isActive) cont.resume(text)
+                    }
+                    override fun onError(error: Int) {
+                        r.destroy(); recognizer = null
+                        // No match / timeout are normal "heard nothing" outcomes.
+                        if (!cont.isActive) return
+                        if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) cont.resume("")
+                        else cont.resumeWith(Result.failure(IllegalStateException("Speech recognition error $error")))
+                    }
+                    override fun onReadyForSpeech(params: android.os.Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onPartialResults(partialResults: android.os.Bundle?) {}
+                    override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+                })
+                cont.invokeOnCancellation { recognizer?.destroy(); recognizer = null }
+                val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                if (language.isNotBlank()) intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, language)
+                r.startListening(intent)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun startRecording() {
+        cancel()
+        val f = File.createTempFile("stt", ".m4a", context.cacheDir)
+        file = f
+        recorder = (if (android.os.Build.VERSION.SDK_INT >= 31) android.media.MediaRecorder(context) else android.media.MediaRecorder()).apply {
+            setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+            setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+            setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+            setAudioSamplingRate(16000); setAudioEncodingBitRate(64000)
+            setOutputFile(f.path)
+            prepare(); start()
+        }
+    }
+
+    override suspend fun stopRecording(): Audio {
+        val r = recorder ?: throw IllegalStateException("Not recording")
+        val f = file!!
+        recorder = null; file = null
+        try { r.stop() } catch (e: RuntimeException) { f.delete(); throw IllegalStateException("Recording was too short") } finally { r.release() }
+        return try { Audio(f.readBytes(), "m4a") } finally { f.delete() }
+    }
+
+    override fun cancel() {
+        recognizer?.let { runCatching { it.cancel(); it.destroy() } }; recognizer = null
+        recorder?.let { runCatching { it.stop() }; it.release() }; recorder = null
+        file?.delete(); file = null
+    }
+}
