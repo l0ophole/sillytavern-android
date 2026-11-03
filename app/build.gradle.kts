@@ -54,3 +54,10 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
 }
+
+// QuickJS unpacks its native library into java.io.tmpdir; keep that inside the build folder for unit tests.
+tasks.withType<Test>().configureEach {
+    val dir = layout.buildDirectory.dir("tmp/test-java").get().asFile
+    doFirst { dir.mkdirs() }
+    systemProperty("java.io.tmpdir", dir.absolutePath)
+}
