@@ -216,3 +216,25 @@ See docs/ROADMAP.md.
 ## Not verified (set 9)
 - Nothing ran on a device/emulator: system TTS, MediaPlayer, SpeechRecognizer, MediaRecorder, the RECORD_AUDIO prompt, image picker + downscaling, grid/viewer dialogs
 - HTTP clients are tested against MockWebServer with request shapes written from the services' documentation, not against real A1111/ComfyUI/NovelAI/OpenAI/ElevenLabs/Whisper servers; vision payloads were never sent to a real model
+
+
+## Done (feature set 10: local ML) — plan: docs/plans/09-local-ml.md
+- Embeddings (`memory/Embedder.kt`): `Embedder` interface; built-in `HashingEmbedder` (words, word pairs, character trigrams hashed into 512 buckets; lexical matching only, no download); `RemoteEmbedder` for OpenAI-compatible `/embeddings` and Ollama `/api/embed` (batches of 32, key in the secret store as `memory:embeddings`)
+- Vector store (`memory/VectorStore.kt`): one binary file per collection in `user/vectors/`, brute-force cosine, score threshold; a collection built by another embedder reads as empty and is replaced on the next write
+- Chat memory (`memory/VectorMemory.kt`): messages older than the newest N (default 5) are chunked and embedded incrementally (id = index + text hash, so edits re-embed and stale entries go); the latest messages form the query; hits are put in chat order into a "Past events" prompt at a depth. `ChatController` fetches it inside the generation job and rebuilds the request with it; an embedding failure only shows a notice. Deleting a chat deletes its vectors
+- Data Bank (`memory/DataBank.kt`): .txt/.md documents with global, character (or group) and chat scope in `user/data-bank/`; chunked with overlap, indexed lazily, best chunks across the scopes go into a prompt; edits and deletions are detected by content hash
+- Expressions (`memory/Expressions.kt`): ST's 28 labels; `KeywordClassifier` (word/emoji lexicon, last mention wins ties, "neutral" otherwise), `LlmClassifier` (main connection, one quiet generation); sprites in `user/sprites/<character name>/<label>[-N].<ext>` with fallback to the fallback expression, then "neutral"; the reply is classified after generation, the greeting with keywords when a chat opens; sprite panel above the input; `/sprite` (`/emote`), `/expression-list`, `/expression-classify`
+- UI: "Memory, data bank & expressions" screen (embedder, memory and data bank settings, document list per scope with add file / write note / re-index, sprite manager)
+- Verification: 754 JVM unit tests pass (53 new), lint 0 errors, debug APK builds
+
+## Rulings / deviations (set 10)
+- **No ONNX Runtime.** The AAR and models cannot be fetched by the offline build and could not be exercised here. The roadmap item is replaced by the `Embedder` / `ExpressionClassifier` interfaces; an ONNX implementation can be added behind them
+- The built-in embedder finds shared words, not meaning; real semantic recall needs a remote embedding model
+- Executed on `main`, native, no subagents; UI tasks compile + lint only
+- Sprites live in `user/sprites/<name>`, not in ST's `characters/<name>/`; the keyword classifier only knows ST's default labels, so custom sprite sets fall back to the fallback expression unless the LLM classifier is used
+- The Data Bank is on by default but does nothing until a document exists; vector memory is off by default
+
+## Not verified (set 10)
+- Nothing ran on a device/emulator: document/sprite pickers, sprite panel, the settings screen
+- `RemoteEmbedder` was tested only against MockWebServer, request shapes from the services' documentation; no real embedding server; recall quality of the hashing embedder on real chats is unmeasured
+- Not built: web/YouTube/Fandom scraping into the Data Bank, PDF/EPUB/HTML extraction, sprite zip import, image-based classification, talking-head/VRM/Live2D, per-message sprite history, HNSW/ANN, `/db` commands
