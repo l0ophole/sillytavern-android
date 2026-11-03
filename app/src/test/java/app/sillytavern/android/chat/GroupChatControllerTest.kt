@@ -145,4 +145,35 @@ class GroupChatControllerTest {
         c.send("hi"); advanceUntilIdle()
         assertEquals(listOf("Bob"), c.state.value.chat!!.messages.filter { !it.isUser && it.originalAvatar != null && it.text.startsWith("reply") }.map { it.name })
     }
+
+    @Test fun impersonateInGroupFillsInputWithoutNewMessage() = runTest {
+        val c = controller(); c.openGroup(group())
+        val before = c.state.value.chat!!.messages.size
+        c.impersonate(); advanceUntilIdle()
+        assertEquals("reply1", c.state.value.impersonation)
+        assertEquals(before, c.state.value.chat!!.messages.size)
+    }
+
+    @Test fun autoModeRepliesPeriodicallyAndStops() = runTest {
+        val c = controller(); c.openGroup(group(members = listOf("Alice.png")).let { it.copy(autoModeDelay = 5).also(groupRepo::save) })
+        c.setAutoMode(true)
+        advanceTimeBy(5_001); runCurrent()
+        assertEquals(1, requests.size)
+        c.setAutoMode(false)
+        advanceTimeBy(20_000); runCurrent()
+        assertEquals(1, requests.size)
+        assertFalse(c.state.value.autoMode)
+    }
+
+    @Test fun deleteCurrentGroupChatSwitchesToAnother() = runTest {
+        val c = controller(); c.openGroup(group())
+        val first = c.state.value.chat!!.file!!
+        c.newChat()
+        val second = c.state.value.chat!!.file!!
+        c.deleteChatFile(second)
+        assertFalse(second.exists())
+        assertEquals(first, c.state.value.chat!!.file)
+        c.deleteChatFile(first) // last chat: a fresh one is created
+        assertEquals(1, c.chatFiles().size)
+    }
 }

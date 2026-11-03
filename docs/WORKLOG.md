@@ -120,3 +120,32 @@ See docs/ROADMAP.md.
 - Behavior is checked against hand-written expectations from ST's source, not against real SillyTavern output (macro edge cases, regex replacement semantics, `idleDuration`/`timeDiff` wording)
 - Commands that mutate the chat while a reply is streaming (e.g. an auto-run `/cut`) can shift the streaming target message; not guarded
 - Not implemented: autocomplete/help popup, command debugger, QR context-menu links, `/popup`, `/api`, `/model`, group commands (set 6), JS in QRs/regex (set 12), preset-scoped regex scripts
+
+## Done (feature set 6: groups + tags) — plan: docs/plans/05-groups-tags.md
+- Tags (`tags/`): ST tag model (`tags` + `tag_map` in `AppSettings`, keyed by `<file>.png` / group id), pure `TagOps` (case-insensitive reuse, rename guard, delete cascades, card-tag import) and `TagFilter` (include = AND, exclude, favorites, text query over names and tag names, CLOSED folders hidden unless selected). Card tags are imported into the map once per character (first time its key is absent) and when a new character is saved
+- Groups (`group/`): ST `groups/<id>.json` (unknown keys kept), chats in `group chats/<chat_id>.jsonl` with ST's placeholder header; messages carry `original_avatar`. `GroupRepository` create/save/delete (deletes chats)/addChat
+- Activation (`GroupActivation`): ports of natural (mentions, talkativeness rolls, banned last speaker, random fallback), list, pooled, manual, swipe/continue speaker, impersonate. `GroupCards.merge`: SWAP / APPEND / APPEND_DISABLED with join prefix/suffix and `<FIELDNAME>`
+- `ChatController` group mode: `openGroup`, `newChat`/`chatFiles`/`openChatFile`/`deleteChatFile` for group chats, sequential per-member generation (`generating` stays true across the batch, stops on error or Stop), `speak(avatar)` (works for muted members), `muteMember`, `updateGroup`, `moveMember`, auto mode (`setAutoMode`, every `auto_mode_delay` s). Regenerate/swipe/continue use the message's own author; an author who left the group gives an error and leaves the message untouched. Prompts get `groupNames` (`Alice: text` on every history message; chat completion always, text completion only without an instruct template) and the speaker's card merged per the group's generation mode
+- Commands: `/member-count /member-get (field=name|index|avatar) /member-enable /member-disable /member-add /member-remove /member-up /member-down`, `/trigger <member>` in a group
+- Card fields: `fav` and `talkativeness` (`extensions.*`), editable in the character editor
+- UI: mixed character/group list with favorites (★ first), tag filter chips (tap include, long-press exclude, folder icons), long-press multi-select with bulk favorite / add tag / remove tag / create group / delete; group editor (members up/down/mute/remove, strategy, card handling, join prefix/suffix, self responses, auto delay, favorite, tags, delete); tag manager (rename, folder type, delete, usage count; Settings → Tags); group chat uses `ChatScreen` with a member strip (tap = speak, long-press = mute) and menu entries for auto mode / edit group
+- Tests: 496 JVM unit tests (all pass), lint has no errors, debug APK builds. Also made `CoreMacrosTest.idleDuration` independent of the wall clock (it failed any time after the minute it was written)
+
+## Rulings / deviations (set 6)
+- Executed on `main` without a worktree, native (no subagents); tests for the UI tasks do not exist (compile + lint only)
+- Tag filter uses AND for several included tags (ST offers an AND/OR toggle)
+- Groups have a plain 👥 placeholder instead of a composed avatar; `avatar_url` is stored but unused
+- Dropped from the plan: `/member-peek` (no use for it yet) and the unused `GroupSession` file split; `GroupGenerationMode` (not `GenerationMode`) avoids clashing with the prompt enum
+- World Info for a group turn uses the speaker's own sources + global/chat books; other members' character books are not scanned
+- `{{char}}` outside a generation (commands, QR) is the first member of the group
+- Character favorites rewrite the card PNG (`extensions.fav`), as ST does
+- Natural-order mention matching follows ST (any word of a member name present in the input)
+- In text completion with an instruct template, group speaker names come from the template's own name handling (which only knows the current speaker), not from `groupNames`
+
+## Not verified (set 6)
+- UI never run on a device/emulator (list filters, tag chips — disabled `FilterChip` inside a clickable box so taps reach the box but the chips look dimmed —, selection mode, group editor, member strip)
+- Activation behaviour is checked against hand-written expectations from ST's source with seeded randomness, not against real SillyTavern output
+- Group depth prompts, sprites/`hideMutedSprites`, queue display and group avatar composition are not implemented; tag import/export of other ST settings is not implemented
+- Deleting a character does not remove it from groups (it shows as "missing"); group chats of a deleted group are removed, character chats are kept
+- Auto mode keeps running while the chat screen is closed until another chat is opened
+
