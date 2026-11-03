@@ -42,6 +42,16 @@ data class ChatMessage(
         if (!r.isNullOrBlank()) put("reasoning", r)
     })
 
+    /** Checkpoint chat linked from this message (`extra.bookmark_link`). */
+    val bookmarkLink: String? get() = (extra["bookmark_link"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+    /** Branch chats created from this message (`extra.branches`). */
+    val branches: List<String> get() = (extra["branches"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+
+    fun withExtra(key: String, value: JsonElement?): ChatMessage = copy(extra = buildJsonObject {
+        extra.forEach { (k, v) -> if (k != key) put(k, v) }
+        if (value != null) put(key, value)
+    })
+
     /** Group chats: avatar file name (with extension) of the member who wrote this message. */
     val originalAvatar: String? get() = (rest["original_avatar"] as? JsonPrimitive)?.contentOrNull
     fun withOriginalAvatar(a: String): ChatMessage = copy(rest = JsonObject(rest + ("original_avatar" to JsonPrimitive(a))))

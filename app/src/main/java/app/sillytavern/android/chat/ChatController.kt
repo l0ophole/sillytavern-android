@@ -238,6 +238,9 @@ class ChatController(
 
     private val host = ControllerHost()
 
+    /** The command host of this controller (tests run slash commands against it). */
+    fun commandHost(): CommandHost = host
+
     private inner class ControllerHost : CommandHost {
         override val variables get() = variableStore()
         override val quickReplies get() = this@ChatController.quickReplies
@@ -286,6 +289,13 @@ class ChatController(
         }
         override fun chatName() = chat?.file?.nameWithoutExtension.orEmpty()
         override suspend fun setChatBook(name: String?) { this@ChatController.setChatBook(name) }
+        override suspend fun createBranch(mesId: Int): String? = this@ChatController.createBranch(mesId)
+        override suspend fun createCheckpoint(mesId: Int, name: String?): String? = this@ChatController.createCheckpoint(mesId, name)
+        override suspend fun openCheckpoint(mesId: Int): Boolean = this@ChatController.openCheckpoint(mesId)
+        override suspend fun backToMain(): Boolean = this@ChatController.backToMain()
+        override fun mainChatName(): String? = this@ChatController.mainChatName()
+        override fun checkpointOf(mesId: Int): String? = messages.getOrNull(mesId)?.bookmarkLink
+        override fun checkpoints(): List<Pair<Int, String>> = ChatBranching.checkpoints(messages)
         override suspend fun switchPersona(name: String): Boolean {
             val p = settings().personas.firstOrNull { it.name.equals(name, true) } ?: return false
             selectPersona(p.id)
@@ -327,6 +337,76 @@ class ChatController(
         else backend.generate(req).map { Chunk.Text(it) }
         stream.collect { if (it is Chunk.Text) out.append(it.text) }
         return out.toString().trim()
+    }
+
+    // ---------------------------------------------------------------- hide, branches, checkpoints
+
+    fun setHidden(index: Int, hidden: Boolean) {
+        if (_state.value.generating) return
+        mutate { l -> l.mapIndexed { i, m -> if (i == index) m.withHidden(hidden) else m } }
+    }
+
+    fun currentChatName(): String = chat?.file?.nameWithoutExtension.orEmpty()
+
+    /** Name of the chat this one was branched from (checkpoint / branch chats), or null. */
+    fun mainChatName(): String? = ChatMeta.string(chatMeta(), ChatMeta.MAIN_CHAT)?.takeIf { it.isNotBlank() }
+
+    private fun chatDirectory(): File? = chat?.file?.parentFile
+
+    private fun chatFileNamed(name: String): File? =
+        chatDirectory()?.let { File(it, app.sillytavern.android.data.StoragePaths.sanitizeFileName(name) + ".jsonl") }
+
+    /** Writes [messages] to a new chat named [name] next to the open one, registering it with the group if needed. */
+    private fun writeDerivedChat(name: String, messages: List<ChatMessage>): File? {
+        val cur = chat ?: return null
+        val file = chatFileNamed(name) ?: return null
+        repo.save(Chat(file, ChatBranching.childHeader(cur.header, currentChatName()), messages))
+        group?.let { g -> if (file.nameWithoutExtension !in g.chats) updateGroup { it.copy(chats = it.chats + file.nameWithoutExtension) } }
+        return file
+    }
+
+    /** Copies the chat up to [mesId] into a new "Branch #n" chat and opens it. Returns the new chat name, or null with an error shown. */
+    fun createBranch(mesId: Int, swipeId: Int? = null, open: Boolean = true): String? {
+        val cur = chat ?: return null
+        if (_state.value.generating) return null
+        val snap = ChatBranching.snapshot(cur.messages, mesId, swipeId)
+        if (snap == null) { _state.update { it.copy(error = "Branch creation failed: invalid message or swipe") }; return null }
+        val name = ChatBranching.uniqueName(currentChatName(), ChatBranching::branchName) { chatFileNamed(it)?.exists() == true }
+        if (name == null) { _state.update { it.copy(error = "Could not generate a unique branch name") }; return null }
+        val file = writeDerivedChat(name, snap) ?: return null
+        mutate { l -> l.mapIndexed { i, m -> if (i == mesId) ChatBranching.withBranch(m, name) else m } }
+        if (open) openChatFile(file)
+        return name
+    }
+
+    /** Saves a checkpoint chat of everything up to [mesId] and links it from that message. Stays in the current chat. */
+    fun createCheckpoint(mesId: Int, name: String? = null): String? {
+        val cur = chat ?: return null
+        if (_state.value.generating) return null
+        val snap = ChatBranching.snapshot(cur.messages, mesId)
+        if (snap == null) { _state.update { it.copy(error = "Checkpoint creation failed: invalid message") }; return null }
+        val finalName = name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: ChatBranching.uniqueName(currentChatName(), ChatBranching::checkpointName) { chatFileNamed(it)?.exists() == true }
+        if (finalName == null) { _state.update { it.copy(error = "Could not generate a unique checkpoint name") }; return null }
+        writeDerivedChat(finalName, snap) ?: return null
+        mutate { l -> l.mapIndexed { i, m -> if (i == mesId) ChatBranching.withCheckpoint(m, finalName) else m } }
+        return finalName
+    }
+
+    /** Opens the checkpoint chat linked from message [mesId]; false when there is none. */
+    fun openCheckpoint(mesId: Int): Boolean {
+        val name = messages.getOrNull(mesId)?.bookmarkLink ?: return false
+        return openChatNamed(name)
+    }
+
+    /** Back to the chat the open one was derived from. */
+    fun backToMain(): Boolean = mainChatName()?.let(::openChatNamed) ?: false
+
+    private fun openChatNamed(name: String): Boolean {
+        val f = chatFileNamed(name)?.takeIf { it.exists() }
+        if (f == null) { _state.update { it.copy(error = "Chat \"$name\" no longer exists") }; return false }
+        openChatFile(f)
+        return true
     }
 
     // ---------------------------------------------------------------- personas

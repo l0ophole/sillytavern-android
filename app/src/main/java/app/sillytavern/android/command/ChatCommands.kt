@@ -58,6 +58,37 @@ object ChatCommands {
             val n = c.unnamed.trim().takeIf { it.isNotEmpty() && !it.equals("none", true) }
             c.host.setChatBook(n); n.orEmpty()
         }
+        fun mesId(c: CommandContext): Int {
+            val n = c.host.messageCount()
+            val id = (c.named["mes"] ?: c.unnamed.takeIf { it.isNotBlank() && it.trim().all(Char::isDigit) })?.trim()?.toIntOrNull() ?: (n - 1)
+            if (id !in 0 until n) throw CommandError("Message $id not found")
+            return id
+        }
+        cmd("branch-create", help = "branch-create [mesId] - copies the chat up to a message into a new branch and opens it; returns its name.", usesPipe = false) { c ->
+            c.host.createBranch(mesId(c)).orEmpty()
+        }
+        cmd("checkpoint-create", "checkpoint", help = "checkpoint-create [mes=N] [name] - saves a checkpoint chat linked from the message; returns its name.", usesPipe = false) { c ->
+            val id = c.named["mes"]?.trim()?.toIntOrNull() ?: (c.host.messageCount() - 1)
+            if (id !in 0 until c.host.messageCount()) throw CommandError("Message $id not found")
+            c.host.createCheckpoint(id, c.unnamed.takeIf { it.isNotBlank() }).orEmpty()
+        }
+        cmd("checkpoint-go", "checkpoint-open", help = "checkpoint-go [mesId] - opens the checkpoint linked from a message.", usesPipe = false) { c ->
+            val id = mesId(c)
+            if (!c.host.openCheckpoint(id)) throw CommandError("No checkpoint is linked to message $id")
+            c.host.chatName()
+        }
+        cmd("checkpoint-exit", "checkpoint-close", help = "Returns to the chat this checkpoint or branch was made from.", usesPipe = false) { c ->
+            if (c.host.mainChatName() == null) throw CommandError("This chat is not a checkpoint or branch")
+            c.host.backToMain(); c.host.chatName()
+        }
+        cmd("checkpoint-get", help = "checkpoint-get [mesId] - name of the checkpoint linked from a message (empty if none).", usesPipe = false) { c ->
+            c.host.checkpointOf(mesId(c)).orEmpty()
+        }
+        cmd("checkpoint-list", "checkpoints", help = "checkpoint-list [links=true] - message ids (or chat names) that have checkpoints.", usesPipe = false) { c ->
+            val links = c.named["links"]?.lowercase() in setOf("true", "on", "1")
+            c.host.checkpoints().joinToString(",") { if (links) it.second else it.first.toString() }
+        }
+        cmd("checkpoint-parent", "parent-chat", help = "Name of the chat this checkpoint or branch came from.", usesPipe = false) { c -> c.host.mainChatName().orEmpty() }
         cmd("persona", help = "persona name - switches persona.", usesPipe = false) { c ->
             if (!c.host.switchPersona(c.unnamed.trim())) throw CommandError("No persona named \"${c.unnamed.trim()}\""); c.unnamed.trim()
         }

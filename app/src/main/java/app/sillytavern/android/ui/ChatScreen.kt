@@ -32,6 +32,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
     var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Int?>(null) }
     var actionsFor by remember { mutableStateOf<Int?>(null) }
+    var checkpointFor by remember { mutableStateOf<Int?>(null) }
     var showChats by remember { mutableStateOf(false) }
     var showBook by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -68,6 +69,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                         DropdownMenu(menu, { menu = false }) {
                             DropdownMenuItem({ Text("New chat") }, { menu = false; ctl.newChat() })
                             DropdownMenuItem({ Text("Chats…") }, { menu = false; showChats = true })
+                            if (ctl.mainChatName() != null) DropdownMenuItem({ Text("Back to main chat") }, { menu = false; ctl.backToMain() })
                             DropdownMenuItem({ Text("Regenerate") }, { menu = false; ctl.regenerate() })
                             DropdownMenuItem({ Text("Continue") }, { menu = false; ctl.continueLast() })
                             DropdownMenuItem({ Text("Impersonate") }, { menu = false; ctl.impersonate() })
@@ -117,6 +119,7 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                 MessageBubble(
                     m, shown = shown, shownReasoning = shownReasoning, isLast = i == messages.lastIndex, generating = state.generating && i == messages.lastIndex,
                     onLongPress = { actionsFor = i }, onSwipe = { d -> ctl.swipe(i, d) },
+                    onOpenCheckpoint = { ctl.openCheckpoint(i) },
                 )
             }
         }
@@ -130,11 +133,26 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
                 Column {
                     TextButton(onClick = { editing = i; actionsFor = null }) { Text("Edit") }
                     TextButton(onClick = { clipboard.setText(AnnotatedString(messages[i].text)); actionsFor = null }) { Text("Copy") }
+                    TextButton(onClick = { ctl.setHidden(i, !messages[i].isHidden); actionsFor = null }) {
+                        Text(if (messages[i].isHidden) "Unhide (include in prompt)" else "Hide (exclude from prompt)")
+                    }
+                    TextButton(onClick = { ctl.createBranch(i, messages[i].swipeId.takeIf { messages[i].swipes.size > 1 }); actionsFor = null }) { Text("Branch from here") }
+                    TextButton(onClick = { checkpointFor = i; actionsFor = null }) { Text(if (messages[i].bookmarkLink != null) "Replace checkpoint…" else "Create checkpoint…") }
+                    if (messages[i].bookmarkLink != null) TextButton(onClick = { ctl.openCheckpoint(i); actionsFor = null }) { Text("Open checkpoint") }
                     TextButton(onClick = { ctl.delete(i); actionsFor = null }) { Text("Delete") }
                 }
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { actionsFor = null }) { Text("Close") } },
+        )
+    }
+    checkpointFor?.let { i ->
+        var name by remember(i) { mutableStateOf(messages.getOrNull(i)?.bookmarkLink.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { checkpointFor = null }, title = { Text("Create checkpoint") },
+            text = { Field("Name (empty = automatic)", name, { name = it }) },
+            confirmButton = { TextButton(onClick = { ctl.createCheckpoint(i, name.ifBlank { null }); checkpointFor = null }) { Text("Create") } },
+            dismissButton = { TextButton(onClick = { checkpointFor = null }) { Text("Cancel") } },
         )
     }
     editing?.let { i ->
@@ -170,13 +188,16 @@ fun ChatScreen(c: AppContainer, characterFile: String, onBack: () -> Unit, onEdi
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit) {
+private fun MessageBubble(m: ChatMessage, shown: String, shownReasoning: String?, isLast: Boolean, generating: Boolean, onLongPress: () -> Unit, onSwipe: (Int) -> Unit, onOpenCheckpoint: () -> Unit) {
     val color = when { m.isNarrator -> MaterialTheme.colorScheme.tertiaryContainer; m.isUser -> MaterialTheme.colorScheme.primaryContainer; else -> MaterialTheme.colorScheme.surfaceVariant }
     Column(
         Modifier.fillMaxWidth().background(color, RoundedCornerShape(12.dp))
             .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(12.dp),
     ) {
-        Text(m.name, style = MaterialTheme.typography.labelMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(m.name, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            m.bookmarkLink?.let { TextButton(onClick = onOpenCheckpoint, contentPadding = PaddingValues(0.dp)) { Text("⚑ ${it.take(24)}", style = MaterialTheme.typography.labelSmall, maxLines = 1) } }
+        }
         shownReasoning?.let { r ->
             var open by remember(m.sendDate) { mutableStateOf(false) }
             TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {

@@ -44,6 +44,13 @@ interface CommandHost {
     fun chatName(): String = unavailable()
     suspend fun setChatBook(name: String?): Unit = unavailable()
     suspend fun switchPersona(name: String): Boolean = unavailable()
+    suspend fun createBranch(mesId: Int): String? = unavailable()
+    suspend fun createCheckpoint(mesId: Int, name: String?): String? = unavailable()
+    suspend fun openCheckpoint(mesId: Int): Boolean = unavailable()
+    suspend fun backToMain(): Boolean = unavailable()
+    fun mainChatName(): String? = null
+    fun checkpointOf(mesId: Int): String? = null
+    fun checkpoints(): List<Pair<Int, String>> = emptyList()
 }
 
 private fun unavailable(): Nothing = throw CommandError("This command needs an open chat")
