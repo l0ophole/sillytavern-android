@@ -7,6 +7,7 @@ object CommandLibrary {
         MathCommands.register()
         ChatCommands.register()
         QuickReplyCommands.register()
+        GroupCommands.register()
     }
 }
 

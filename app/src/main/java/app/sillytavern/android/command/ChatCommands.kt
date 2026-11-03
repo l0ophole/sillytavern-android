@@ -15,7 +15,12 @@ object ChatCommands {
         cmd("sendas", help = "sendas name=X text - adds a message from another character.") { c ->
             c.host.addMessageAs(c.named["name"] ?: throw CommandError("name= required"), c.unnamed); c.unnamed
         }
-        cmd("trigger", help = "Generates a reply.", usesPipe = false) { c -> c.host.generateReply(); c.pipe }
+        cmd("trigger", help = "trigger [member] - generates a reply (in a group: optionally by the given member).", usesPipe = false) { c ->
+            val arg = c.unnamed.trim()
+            if (arg.isNotEmpty() && c.host.groupMembers() != null) c.host.groupSpeak(GroupCommands.find(c.host, arg).avatar)
+            else c.host.generateReply()
+            c.pipe
+        }
         cmd("continue", "cont", help = "Continues the last reply.", usesPipe = false) { c -> c.host.continueLast(); c.pipe }
         cmd("regenerate", "regen", help = "Regenerates the last reply as a new swipe.", usesPipe = false) { c -> c.host.regenerate(); c.pipe }
         cmd("swipe", help = "swipe left|right", usesPipe = false) { c ->

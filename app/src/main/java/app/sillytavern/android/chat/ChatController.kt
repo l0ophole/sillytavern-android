@@ -292,6 +292,18 @@ class ChatController(
             updateSettings { it.copy(activePersonaId = p.id) }
             return true
         }
+        override suspend fun groupMembers(): List<GroupMemberInfo>? = group?.let { g ->
+            g.members.map { a -> GroupMemberInfo(memberByAvatar(a)?.card?.name ?: a.removeSuffix(".png"), a, !g.isMuted(a)) }
+        }
+        override suspend fun groupSetEnabled(avatar: String, enabled: Boolean) { muteMember(avatar, !enabled) }
+        override suspend fun groupAdd(characterName: String): Boolean {
+            val c = characterLookup(characterName.removeSuffix(".png")) ?: return false
+            updateGroup { g -> if (avatarOf(c) in g.members) g else g.copy(members = g.members + avatarOf(c)) }
+            return true
+        }
+        override suspend fun groupRemove(avatar: String) { updateGroup { g -> g.copy(members = g.members - avatar, disabledMembers = g.disabledMembers - avatar) } }
+        override suspend fun groupMove(avatar: String, delta: Int) = updateGroup { g -> g.copy(members = moved(g.members, avatar, delta)) }
+        override suspend fun groupSpeak(avatar: String) { waitIdle(); speak(avatar); groupJob?.join() }
         private suspend fun waitIdle() { job?.join() }
     }
 
@@ -538,6 +550,16 @@ class ChatController(
         if (m == null) _state.update { it.copy(error = "The member who wrote this message is no longer in the group. Add them back to continue.") }
         return m
     }
+
+    private fun moved(list: List<String>, item: String, delta: Int): List<String> {
+        val i = list.indexOf(item)
+        val j = i + delta
+        if (i < 0 || j !in list.indices) return list
+        return list.toMutableList().also { it[i] = it[j]; it[j] = item }
+    }
+
+    /** Reorders a member in the open group (UI up/down buttons). */
+    fun moveMember(avatar: String, delta: Int) = updateGroup { g -> g.copy(members = moved(g.members, avatar, delta)) }
 
     private fun resolveMembers(g: Group) = g.members.mapNotNull { characterLookup(it.removeSuffix(".png")) }
 

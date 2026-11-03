@@ -5,6 +5,9 @@ import app.sillytavern.android.chat.Macros
 import app.sillytavern.android.macro.VariableStore
 
 /** What commands need from the app. Chat-related members get defaults so simple hosts (tests) stay small. */
+/** A group member as commands see them (group order); [avatar] is the `<file>.png` id. */
+data class GroupMemberInfo(val name: String, val avatar: String, val enabled: Boolean)
+
 interface CommandHost {
     val variables: VariableStore
     fun macroContext(): MacroContext
@@ -12,6 +15,14 @@ interface CommandHost {
     /** Runs a stored script (Quick Reply `set.label`); null when no such script exists. */
     suspend fun runStoredScript(name: String, executor: CommandExecutor): String? = null
     val quickReplies: app.sillytavern.android.quickreply.QuickReplyAccess? get() = null
+
+    // --- group chats; groupMembers() is null outside a group chat ---
+    suspend fun groupMembers(): List<GroupMemberInfo>? = null
+    suspend fun groupSetEnabled(avatar: String, enabled: Boolean): Unit = unavailable()
+    suspend fun groupAdd(characterName: String): Boolean = false
+    suspend fun groupRemove(avatar: String): Unit = unavailable()
+    suspend fun groupMove(avatar: String, delta: Int): Unit = unavailable()
+    suspend fun groupSpeak(avatar: String): Unit = unavailable()
 
     // --- chat access (implemented by ChatController) ---
     suspend fun sendUser(text: String): Unit = unavailable()
