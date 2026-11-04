@@ -57,7 +57,7 @@ object RegexEngine {
         return placement in sc.placement
     }
 
-    private val macroRe = Regex("""\{\{[^{}]*}}""")
+    private val macroRe = Regex("""\{\{[^{}]*\}\}""")
 
     fun run(sc: RegexScript, input: String, p: RegexParams): String {
         if (sc.disabled || sc.findRegex.isEmpty() || input.isEmpty() || input.length > MAX_INPUT) return input
@@ -79,7 +79,7 @@ object RegexEngine {
         val m: Matcher = c.pattern.matcher(Budgeted(input))
         val sb = StringBuilder()
         var last = 0
-        val rep = sc.replaceString.replace(Regex("\\{\\{match}}", RegexOption.IGNORE_CASE), Regex.escapeReplacement("\$0"))
+        val rep = sc.replaceString.replace(Regex("\\{\\{match\\}\\}", RegexOption.IGNORE_CASE), Regex.escapeReplacement("\$0"))
         val trims = sc.trimStrings.map { expand(it) }.filter { it.isNotEmpty() }
         while (m.find()) {
             sb.append(input, last, m.start())

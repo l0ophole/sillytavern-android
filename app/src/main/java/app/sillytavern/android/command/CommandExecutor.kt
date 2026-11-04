@@ -196,7 +196,7 @@ class CommandExecutor(val host: CommandHost, val limits: Limits = Limits()) {
         return def.run(ctx)
     }
 
-    private val scopeRe = Regex("""\{\{\s*(pipe|timesIndex|var::([^{}]*?)|globalvar::([^{}]*?))\s*}}""", RegexOption.IGNORE_CASE)
+    private val scopeRe = Regex("""\{\{\s*(pipe|timesIndex|var::([^{}]*?)|globalvar::([^{}]*?))\s*\}\}""", RegexOption.IGNORE_CASE)
 
     fun expandText(text: String, scope: CommandScope, pipe: String): String {
         if (!text.contains("{{")) return text

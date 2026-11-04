@@ -4,7 +4,7 @@ import app.sillytavern.android.chat.MacroContext
 
 object MacroEngine {
     private const val MAX_PASSES = 8
-    private val trimRe = Regex("\\s*\\{\\{trim}}\\s*", RegexOption.IGNORE_CASE)
+    private val trimRe = Regex("\\s*\\{\\{trim\\}\\}\\s*", RegexOption.IGNORE_CASE)
 
     fun expand(input: String, ctx: MacroContext): String {
         if (input.isEmpty() || !input.contains("{{") && !input.contains('<')) return input

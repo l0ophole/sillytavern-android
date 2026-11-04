@@ -42,7 +42,6 @@ class GenerationWatcher(
     private val previewLength: Int = 120,
 ) {
     private var wasGenerating = false
-    private var messagesAtStart = 0
 
     fun start(scope: CoroutineScope): Job = scope.launch {
         states.distinctUntilChangedBy { Triple(it.generating, it.error, it.chat?.messages?.size) }.collect(::onState)
@@ -52,13 +51,14 @@ class GenerationWatcher(
         val name = s.group?.name ?: s.character?.card?.name ?: ""
         if (s.generating && !wasGenerating) {
             wasGenerating = true
-            messagesAtStart = s.chat?.messages?.size ?: 0
             if (settings().keepAlive) sink.running(name)
         } else if (!s.generating && wasGenerating) {
             wasGenerating = false
             sink.idle()
             val last = s.chat?.messages?.lastOrNull()
-            val produced = last != null && !last.isUser && !last.isSystem && (s.chat?.messages?.size ?: 0) > messagesAtStart
+            // The streaming reply is already in the list when generation starts (and a regenerate/swipe reuses the
+            // last message), so "produced" means the last message is a non-empty character message, not "count grew".
+            val produced = last != null && !last.isUser && !last.isSystem && last.text.isNotBlank()
             if (produced && s.error == null && settings().notifyReplies && !foreground()) {
                 val text = last!!.text.replace(Regex("\\s+"), " ").trim()
                 val preview = if (text.length > previewLength) text.take(previewLength).trimEnd() + "…" else text

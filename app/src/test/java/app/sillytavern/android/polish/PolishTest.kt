@@ -32,6 +32,13 @@ class PolishTest {
         assertEquals(listOf("run:Ann", "idle", "reply:Ann:Hello ther…:Ann"), sink.log)
     }
 
+    @Test fun streamingPlaceholderPresentAtStartStillNotifies() {
+        val sink = FakeSink(); val w = watcher(sink, fg = false)
+        w.onState(state(true, msg(true, "hi"), msg(false, "")))
+        w.onState(state(false, msg(true, "hi"), msg(false, "Hello")))
+        assertEquals(listOf("run:Ann", "idle", "reply:Ann:Hello:Ann"), sink.log)
+    }
+
     @Test fun foregroundReplyDoesNotNotify() {
         val sink = FakeSink(); val w = watcher(sink, fg = true)
         w.onState(state(true, msg(true, "hi")))

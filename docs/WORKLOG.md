@@ -304,3 +304,6 @@ See docs/ROADMAP.md.
 
 ## Set 14: Android polish
 Plan `docs/plans/13-android-polish.md`. Added `polish/` (watcher, share importer, recent chat, power policy), foreground service + reply notifications, share target, Continue widget, trim-memory/Battery Saver hooks, Android settings screen. 836 unit tests pass (8 new), lint clean of errors, debug APK builds. Device-untested.
+
+## Set 15: Device verification
+Plan `docs/plans/14-device-verification.md`. First on-device run (Android 15 emulator, mock SSE backend). Fixed three device-only bugs: cleartext HTTP blocked, ICU regex crash on bare `}` in macro patterns (7 places), reply-ready notification never firing. 837 unit tests pass (1 new), lint 0, debug APK builds. Emulator only.

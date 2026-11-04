@@ -76,7 +76,7 @@ class QuickReplyService(
     suspend fun runStored(ref: String, executor: CommandExecutor, setName: String? = null): String? {
         val (_, qr) = find(ref, setName) ?: return null
         if (!qr.message.trimStart().startsWith("/")) return qr.message
-        return executor.callText(qr.message.replace(Regex("\\{\\{input}}", RegexOption.IGNORE_CASE), ""), CommandScope(null), "")
+        return executor.callText(qr.message.replace(Regex("\\{\\{input\\}\\}", RegexOption.IGNORE_CASE), ""), CommandScope(null), "")
     }
 
     /**
@@ -92,11 +92,11 @@ class QuickReplyService(
         val input = if (!isAutoExecute && !isRun && set.injectInput && currentInput.isNotEmpty())
             (if (set.placeBeforeInput) "$msg $currentInput" else "$currentInput $msg") else msg
         if (input.trimStart().startsWith("/") && !set.disableSend) {
-            val text = input.replace(Regex("\\{\\{input}}", RegexOption.IGNORE_CASE), currentInput)
+            val text = input.replace(Regex("\\{\\{input\\}\\}", RegexOption.IGNORE_CASE), currentInput)
             val r = executor.runText(text.trim())
             return QuickReplyOutcome(null, null, r.error)
         }
-        val text = expand(input.replace(Regex("\\{\\{input}}", RegexOption.IGNORE_CASE), currentInput)).trim()
+        val text = expand(input.replace(Regex("\\{\\{input\\}\\}", RegexOption.IGNORE_CASE), currentInput)).trim()
         return if (set.disableSend) QuickReplyOutcome(null, text, null) else QuickReplyOutcome(text, null, null)
     }
 
