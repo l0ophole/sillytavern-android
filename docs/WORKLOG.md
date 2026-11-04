@@ -281,3 +281,23 @@ See docs/ROADMAP.md.
 - Nothing ran on a device/emulator: the Android QuickJS native library (`quickjs-android`) was never loaded on Android, only the JVM build in tests; the Extensions screen and zip picker
 - Infinite loops leak a thread and its QuickJS runtime until the process ends; memory use is not capped
 - Not built: DOM / jQuery / `getContext()` compatibility, git-URL install, extension-drawn UI, async APIs, per-event loop protection (a `message_sent` handler that sends a message retriggers itself)
+
+
+## Done (feature set 13: data & accounts) — plan: docs/plans/12-data-accounts.md
+- `data/Backup.kt`: `BackupService` zips a user's data root (`st-android-backup.json` header + `data/…`); restore extracts to a staging folder (zip-slip safe, 200k files / 8 GB caps, header + format check), then swaps folders and keeps the old data as `data.before-restore`. `secrets.enc.json` is never exported (Keystore-bound) and survives a restore. `AutoBackup` rotates `backups/<handle>/st-backup-*.zip` (interval hours, keep N), run at container start when enabled
+- `data/DataMaid.kt`: scan/clean for stray `.tmp`/`.restoring` files, chat folders of deleted characters, persona avatars no persona uses, empty media folders; clean refuses paths outside the data root; group chats are never touched
+- `data/Accounts.kt`: `AccountRegistry` (`accounts.json`), PBKDF2-SHA256 passcode (random salt, 120k iterations); `default` user keeps `filesDir/data` (no migration), others use `users/<handle>/data`; cannot delete default/active user; deleting a locked user needs its passcode
+- `App.kt`: `AppContainer(app, accounts, account)`, `SillyTavernApp.switchTo/reload/unlock/lock` (unlock state is in memory only, a cold start asks again), `MainActivity` shows `LockScreen` before the app
+- UI: Settings → Data & backups (SAF export/import, auto-backup, rotating list, data maid), Users & passcode (add, switch, passcode, delete, lock now)
+- Verification: 828 JVM unit tests pass (12 new: backup 4, data maid 2, accounts 6), lint 0 issues, debug APK builds; a first run showed 153 NoSuchMethodError failures from stale test classes after adding `AppSettings.data`, gone after clearing the compiled test classes
+
+## Rulings / deviations (set 13)
+- Executed on `main`, native, no subagents
+- Multi-user = local profiles on one device (no server accounts, roles or admin); the passcode is a UI lock, data on disk is not encrypted by it
+- The roadmap's "SAF-based full export" is a zip written to / read from a SAF document URI, not a folder-tree sync
+
+## Not verified (set 13)
+- Nothing ran on a device/emulator: the SAF pickers, content-resolver streams for large backups, the lock screen, activity recreation after a switch/restore
+- Restoring a backup on another device loses API keys by design; a desktop SillyTavern data zip is not recognised (no header)
+- A restore swaps folders while the old container's files may still be open; the container is rebuilt right after but a running generation is not awaited
+- Not built: encryption at rest, per-category restore, scheduled backups while the app is closed, user avatars/roles

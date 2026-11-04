@@ -7,6 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
@@ -18,16 +21,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val c = (application as SillyTavernApp).container
+        val app = application as SillyTavernApp
+        val c = app.container
         setContent {
             val s by c.settings.settings.collectAsState()
-            SillyTheme(s.appearance, rememberTranslator(s.appearance.language)) { AppNav(c) }
+            var unlocked by remember { mutableStateOf(app.isUnlocked()) }
+            SillyTheme(s.appearance, rememberTranslator(s.appearance.language)) {
+                if (unlocked) AppNav(c, onRebuild = { recreate() })
+                else LockScreen(c.account.name, app.accounts.list().filter { it.handle != c.account.handle && !it.locked },
+                    onUnlock = { code -> app.unlock(code).also { if (it) unlocked = true } },
+                    onSwitch = { app.switchTo(it.handle); recreate() })
+            }
         }
     }
 }
 
 @Composable
-private fun AppNav(c: AppContainer) {
+private fun AppNav(c: AppContainer, onRebuild: () -> Unit) {
     val nav = rememberNavController()
     NavHost(nav, startDestination = "characters") {
         composable("characters") {
@@ -62,6 +72,8 @@ private fun AppNav(c: AppContainer) {
                 onTags = { nav.navigate("tags") }, onAppearance = { nav.navigate("appearance") },
                 onMedia = { nav.navigate("media") }, onGallery = { nav.navigate("gallery") }, onMemory = { nav.navigate("memory") }, onTools = { nav.navigate(it) })
         }
+        composable("data") { DataScreen(c, onBack = { nav.popBackStack() }, onRestored = onRebuild) }
+        composable("accounts") { AccountsScreen(c, onBack = { nav.popBackStack() }, onSwitched = onRebuild) }
         composable("extensions") { ExtensionsScreen(c, onBack = { nav.popBackStack() }) }
         composable("tools") { ToolsScreen(c, onBack = { nav.popBackStack() }) }
         composable("content") { ContentScreen(c, onBack = { nav.popBackStack() }) }

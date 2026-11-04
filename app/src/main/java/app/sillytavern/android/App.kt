@@ -23,11 +23,15 @@ import app.sillytavern.android.extensions.ExtensionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /** Manual dependency container (Hilt is deferred until the object graph justifies it). */
-class AppContainer(app: Application) {
-    val paths = StoragePaths(app.filesDir.resolve("data")).ensure()
+class AppContainer(app: Application, val accounts: AccountRegistry, val account: Account) {
+    val paths = accounts.pathsFor(account.handle).ensure()
+    val backup = BackupService(paths, account.handle)
+    val autoBackup = AutoBackup(accounts.backupDir(account.handle), backup)
+    val dataMaid = DataMaid(paths)
     val settings = SettingsRepository(paths.settingsFile)
     val secrets = SecretStore(paths.secretsFile, AesGcmCrypto.keystore())
     val characters = CharacterRepository(paths)
@@ -90,15 +94,56 @@ class AppContainer(app: Application) {
         chatController.tts = tts; chatController.runStartupQuickReplies()
         chatController.extensions = extensionHost
         scope.launch { extensionHost.sync() }
+        scope.launch(Dispatchers.IO) { runCatching { autoBackup.runIfDue(settings.settings.value.data) } }
+    }
+
+    /** Stops everything this container started; call before replacing it with another user's container. */
+    fun close() {
+        chatController.stop()
+        tts.stop()
+        CoroutineScope(Dispatchers.Default).launch { runCatching { extensionHost.stopAll() } }
+        scope.cancel()
     }
 }
 
 class SillyTavernApp : Application() {
+    lateinit var accounts: AccountRegistry
+        private set
     lateinit var container: AppContainer
         private set
 
+    /** Handles whose passcode was entered in this process; a cold start asks again. */
+    private val unlocked = HashSet<String>()
+
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        accounts = AccountRegistry(filesDir)
+        container = AppContainer(this, accounts, accounts.active())
+    }
+
+    fun isUnlocked() = !container.account.locked || container.account.handle in unlocked
+
+    /** Checks the passcode of the open user. */
+    fun unlock(code: String): Boolean {
+        if (!accounts.verify(container.account.handle, code)) return false
+        unlocked += container.account.handle
+        return true
+    }
+
+    fun lock() { unlocked -= container.account.handle }
+
+    /** Opens another user's data (the caller recreates the activity). A user with a passcode must be unlocked afterwards. */
+    fun switchTo(handle: String) {
+        accounts.setActive(handle)
+        reload()
+    }
+
+    /** Rebuilds the container from disk, e.g. after a restore or a passcode change. */
+    fun reload() {
+        val handle = accounts.active().handle
+        val was = unlocked.contains(handle)
+        container.close()
+        container = AppContainer(this, accounts, accounts.active())
+        if (was) unlocked += handle
     }
 }
