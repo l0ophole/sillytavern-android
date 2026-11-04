@@ -3,7 +3,7 @@
 State: sets 1-15 are done and pushed to `origin/main` (github.com/l0ophole/sillytavern-android). 839 JVM tests pass, lint is clean, debug APK builds. Set 15 (device verification) is **partly done**: the items below are what is left. Everything verified so far is recorded in `docs/ROADMAP.md` under "Done (feature set 15)".
 
 ## Remaining device checks (each needs a real or emulated Android device)
-1. **Notification tap-through.** Generate a reply with the app in the background, tap the "reply ready" notification, confirm it opens that chat (cold and warm). The notification itself already appears (verified on the emulator).
+1. ~~Notification tap-through~~ done warm and cold on the phone (see ROADMAP); only with a single chat.
 2. **Real `content://` share.** Share a character card PNG/JSON from a real app (Files, Drive, a browser download) to SillyTavern. Only a `file://` URI was tested because adb cannot grant URI read permission.
 3. **TTS (system + cloud) and STT.** Needs RECORD_AUDIO grant and a speech service; check the permission prompt and that speech works.
 4. **Image generation** (A1111/ComfyUI/NovelAI) against a reachable backend, plus the gallery and attachments.
