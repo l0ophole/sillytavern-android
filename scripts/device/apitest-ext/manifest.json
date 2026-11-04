@@ -1,0 +1,1 @@
+{"id":"apitest","name":"API test","version":"1.0.1","description":"Exercises fetch, generateQuiet, setPrompt, sendMessage, events.","author":"test","script":"index.js","permissions":["commands","macros","prompt","chat","generate","network"]}

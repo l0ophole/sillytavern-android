@@ -8,7 +8,7 @@ State: sets 1-15 are done and pushed to `origin/main` (github.com/l0ophole/silly
 3. **TTS (system + cloud) and STT.** Needs RECORD_AUDIO grant and a speech service; check the permission prompt and that speech works.
 4. **Image generation** (A1111/ComfyUI/NovelAI) against a reachable backend, plus the gallery and attachments.
 5. ~~Tablet layout~~ done at 1600x2560 via `wm size` (see ROADMAP); real foldable and landscape not tried.
-6. **Remaining Extensions API**: `st.fetch`, `st.generateQuiet`, `st.setPrompt`, `st.sendMessage`, events (`message_received` etc.). Only commands and macros were tested.
+6. ~~Remaining Extensions API~~ done on the phone (see ROADMAP); `st.off`, storage across restarts and the 5 s timeout were not run.
 7. **Other flows never run on a device**: group chats, World Info in a real generation, Quick Replies, regex scripts in a chat, translation/web search, content manager downloads, embeddings/vector memory, Battery Saver behaviour, `onTrimMemory`.
 8. **A second physical device / other Android versions** (tested: Android 14 arm64 phone `B170D`, Android 15 x86_64 emulator).
 
