@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
                     AppNav(c, route, onRebuild = { recreate() })
                 }
                 else LockScreen(c.account.name, app.accounts.list().filter { it.handle != c.account.handle && !it.locked },
-                    onUnlock = { code -> app.unlock(code).also { if (it) unlocked = true } },
+                    onUnlock = { code -> withContext(Dispatchers.Default) { app.unlock(code) }.also { if (it) unlocked = true } },
                     onSwitch = { app.switchTo(it.handle); recreate() })
             }
         }

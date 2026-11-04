@@ -16,6 +16,9 @@ import app.sillytavern.android.AppContainer
 import app.sillytavern.android.SillyTavernApp
 import app.sillytavern.android.data.Account
 import app.sillytavern.android.data.AccountException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface Dialog {
     data object Add : Dialog
@@ -72,14 +75,14 @@ fun AccountsScreen(c: AppContainer, onBack: () -> Unit, onSwitched: () -> Unit) 
             )
         }
         is Dialog.Switch -> CodeDialog(tr("Passcode for ${d.a.name}"), tr("Open"), { dialog = null }) { code ->
-            if (c.accounts.verify(d.a.handle, code)) {
-                app.switchTo(d.a.handle); app.unlock(code); dialog = null; onSwitched(); true
+            if (withContext(Dispatchers.Default) { c.accounts.verify(d.a.handle, code) }) {
+                app.switchTo(d.a.handle); withContext(Dispatchers.Default) { app.unlock(code) }; dialog = null; onSwitched(); true
             } else false
         }
         is Dialog.Delete -> CodeDialog(
             tr("Delete ${d.a.name} and all their data?"), tr("Delete"), { dialog = null }, needsCode = d.a.locked,
         ) { code ->
-            val ok = try { c.accounts.delete(d.a.handle, code) } catch (e: AccountException) { message = e.message; true }
+            val ok = try { withContext(Dispatchers.Default) { c.accounts.delete(d.a.handle, code) } } catch (e: AccountException) { message = e.message; true }
             if (ok) { version++; dialog = null }
             ok
         }
@@ -87,8 +90,10 @@ fun AccountsScreen(c: AppContainer, onBack: () -> Unit, onSwitched: () -> Unit) 
             var current by remember { mutableStateOf("") }
             var next by remember { mutableStateOf("") }
             var wrong by remember { mutableStateOf(false) }
+            var saving by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
             AlertDialog(
-                onDismissRequest = { dialog = null }, title = { Text(tr("Passcode for ${d.a.name}")) },
+                onDismissRequest = { if (!saving) dialog = null }, title = { Text(tr("Passcode for ${d.a.name}")) },
                 text = {
                     Column {
                         if (d.a.locked) OutlinedTextField(current, { current = it; wrong = false }, label = { Text(tr("Current passcode")) }, singleLine = true,
@@ -98,12 +103,22 @@ fun AccountsScreen(c: AppContainer, onBack: () -> Unit, onSwitched: () -> Unit) 
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        if (c.accounts.setPasscode(d.a.handle, next, current.takeIf { d.a.locked })) {
-                            if (d.a.handle == c.account.handle) { app.reload(); if (next.isNotEmpty()) app.unlock(next); onSwitched() }
-                            version++; dialog = null
-                        } else wrong = true
-                    }) { Text(tr("Save")) }
+                    TextButton(enabled = !saving, onClick = {
+                        saving = true
+                        scope.launch {
+                            // PBKDF2 takes seconds on a phone: never on the UI thread.
+                            val ok = withContext(Dispatchers.Default) { c.accounts.setPasscode(d.a.handle, next, current.takeIf { d.a.locked }) }
+                            if (ok) {
+                                if (d.a.handle == c.account.handle) {
+                                    app.reload()
+                                    if (next.isNotEmpty()) withContext(Dispatchers.Default) { app.unlock(next) }
+                                    onSwitched()
+                                }
+                                version++; dialog = null
+                            } else wrong = true
+                            saving = false
+                        }
+                    }) { Text(tr(if (saving) "Saving…" else "Save")) }
                 },
                 dismissButton = { TextButton(onClick = { dialog = null }) { Text(tr("Cancel")) } },
             )
@@ -113,32 +128,36 @@ fun AccountsScreen(c: AppContainer, onBack: () -> Unit, onSwitched: () -> Unit) 
 
 /** A passcode prompt. [onSubmit] returns false for a wrong code. */
 @Composable
-fun CodeDialog(title: String, action: String, onDismiss: () -> Unit, needsCode: Boolean = true, onSubmit: (String) -> Boolean) {
+fun CodeDialog(title: String, action: String, onDismiss: () -> Unit, needsCode: Boolean = true, onSubmit: suspend (String) -> Boolean) {
     var code by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text(title) },
         text = {
             if (needsCode) OutlinedTextField(code, { code = it; wrong = false }, label = { Text(tr("Passcode")) }, singleLine = true, isError = wrong,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
         },
-        confirmButton = { TextButton(onClick = { if (!onSubmit(code)) wrong = true }) { Text(action) } },
+        confirmButton = { TextButton(enabled = !busy, onClick = { busy = true; scope.launch { if (!onSubmit(code)) wrong = true; busy = false } }) { Text(action) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }
 
 /** Shown instead of the app while the open user's passcode has not been entered. [onUnlocked] rebuilds the UI. */
 @Composable
-fun LockScreen(userName: String, others: List<Account>, onUnlock: (String) -> Boolean, onSwitch: (Account) -> Unit) {
+fun LockScreen(userName: String, others: List<Account>, onUnlock: suspend (String) -> Boolean, onSwitch: (Account) -> Unit) {
     var code by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.padding(32.dp).fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Text(userName, style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(code, { code = it; wrong = false }, label = { Text(tr("Passcode")) }, singleLine = true, isError = wrong,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.padding(vertical = 16.dp))
-            Button(onClick = { if (!onUnlock(code)) wrong = true }) { Text(tr("Unlock")) }
+            Button(enabled = !busy, onClick = { busy = true; scope.launch { if (!onUnlock(code)) wrong = true; busy = false } }) { Text(tr("Unlock")) }
             if (wrong) Text(tr("Wrong passcode"), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             others.forEach { TextButton(onClick = { onSwitch(it) }) { Text("${tr("Switch to")} ${it.name}") } }
         }
