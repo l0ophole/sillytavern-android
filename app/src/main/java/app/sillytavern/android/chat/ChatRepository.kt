@@ -17,6 +17,9 @@ data class Chat(
 class ChatRepository(private val paths: StoragePaths) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** Folder holding the chats of one character (created on demand). */
+    fun dirFor(characterFileName: String): File = paths.chatDir(characterFileName).also { it.mkdirs() }
+
     fun list(characterFileName: String): List<File> =
         (paths.chatDir(characterFileName).listFiles { f -> f.extension == "jsonl" } ?: emptyArray())
             .sortedByDescending { it.lastModified() }
