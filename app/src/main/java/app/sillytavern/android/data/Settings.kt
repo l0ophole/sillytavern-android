@@ -155,6 +155,8 @@ data class AppSettings(
     val tools: app.sillytavern.android.tools.ToolsSettings = app.sillytavern.android.tools.ToolsSettings(),
     // --- Extensions (feature set 12) ---
     val extensions: app.sillytavern.android.extensions.ExtensionSettings = app.sillytavern.android.extensions.ExtensionSettings(),
+    // --- Data & accounts (feature set 13) ---
+    val data: DataSettings = DataSettings(),
 ) {
     val tagState get() = app.sillytavern.android.tags.TagState(tags, tagMap)
     val activeConnection get() = connections.firstOrNull { it.id == activeConnectionId } ?: connections.firstOrNull()
