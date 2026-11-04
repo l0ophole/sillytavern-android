@@ -301,3 +301,6 @@ See docs/ROADMAP.md.
 - Restoring a backup on another device loses API keys by design; a desktop SillyTavern data zip is not recognised (no header)
 - A restore swaps folders while the old container's files may still be open; the container is rebuilt right after but a running generation is not awaited
 - Not built: encryption at rest, per-category restore, scheduled backups while the app is closed, user avatars/roles
+
+## Set 14: Android polish
+Plan `docs/plans/13-android-polish.md`. Added `polish/` (watcher, share importer, recent chat, power policy), foreground service + reply notifications, share target, Continue widget, trim-memory/Battery Saver hooks, Android settings screen. 836 unit tests pass (8 new), lint clean of errors, debug APK builds. Device-untested.

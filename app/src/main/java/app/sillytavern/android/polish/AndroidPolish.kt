@@ -96,6 +96,7 @@ class AndroidGenerationSink(private val ctx: Context) : GenerationSink {
         ContinueWidget.refreshAsync(ctx)
     }
 
+    @android.annotation.SuppressLint("MissingPermission") // areNotificationsEnabled() is checked and the call is wrapped
     override fun replyReady(characterName: String, preview: String, characterFile: String?, groupId: String?) {
         ensureChannels(ctx)
         if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return

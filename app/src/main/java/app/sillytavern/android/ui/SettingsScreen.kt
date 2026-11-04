@@ -35,6 +35,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onPromptManager: () -> U
             TextButton(onClick = { onTools("tokens") }) { Text(tr("Token counter")) }
             TextButton(onClick = { onTools("stats") }) { Text(tr("Statistics")) }
             TextButton(onClick = { onTools("extensions") }) { Text(tr("Extensions")) }
+            TextButton(onClick = { onTools("polish") }) { Text(tr("Android (background, widget)")) }
             TextButton(onClick = { onTools("data") }) { Text(tr("Data & backups")) }
             TextButton(onClick = { onTools("accounts") }) { Text(tr("Users & passcode")) }
             SectionHeader(tr("Connections")) { editConn = ConnectionProfile() }

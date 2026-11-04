@@ -137,6 +137,7 @@ private fun AppNav(c: AppContainer, route: androidx.compose.runtime.MutableState
         }
         composable("data") { DataScreen(c, onBack = { nav.popBackStack() }, onRestored = onRebuild) }
         composable("accounts") { AccountsScreen(c, onBack = { nav.popBackStack() }, onSwitched = onRebuild) }
+        composable("polish") { PolishScreen(c, onBack = { nav.popBackStack() }) }
         composable("extensions") { ExtensionsScreen(c, onBack = { nav.popBackStack() }) }
         composable("tools") { ToolsScreen(c, onBack = { nav.popBackStack() }) }
         composable("content") { ContentScreen(c, onBack = { nav.popBackStack() }) }
