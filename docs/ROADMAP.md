@@ -29,6 +29,7 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 - Physical device (model B170D, Android 14 / API 34, arm64-v8a, USB adb): app launches, default-character install, a chat opens, and **Extensions work**: install from a zip through the real system file picker, permission dialog, `libquickjs.so` loads (extension shows Running, log "loaded ok"), a registered slash command (`/wc one two three | /echo {{pipe}}` shows `WC=3`) and a registered macro (`{{wc::a b c d}}` shows `M4`)
 - Physical device, backup + lock screen: Export backup through the system "create document" picker wrote a valid zip (7 entries); Restore from file through the open picker replaced the data and brought a removed extension back; set/change passcode, "Lock now", cold-start lock screen, wrong code rejected, right code unlocks. **Found and fixed**: PBKDF2 (120k iterations) ran on the UI thread, so saving a passcode froze the app for ~5.5 s and Android showed "isn't responding"; hashing/verification now runs on `Dispatchers.Default` (`AccountsScreen`, `LockScreen`, `MainActivity`) and the Save button shows "Saving…"
 - Physical device, users + widget: add user, switch (data is isolated: the new user has no characters, the default user's are intact after switching back), passcode on a second user, switch into a locked user (wrong code keeps the dialog open, right code opens it), delete a locked user with its code, all without a freeze after the passcode fix. Widget: provider registered, "Add Continue chat widget" opens the launcher's pin dialog, widget renders the latest chat (name + snippet), tapping it opens that chat from the home screen cold (process killed) and warm (`onNewIntent`). Cosmetic: the widget has no preview image (the picker shows a placeholder) and its snippet shows raw markdown `*`
+- Physical device, tablet layout (`wm size 1600x2560`, density 320): character list fills the width; chat column is width-capped and centered, composer and avatar lay out correctly, no crash. Reset with `wm size reset; wm density reset`. Real foldable/landscape not tried
 - Follow-up: `RegexEngine.escapeBareBraces` escapes JS-literal `{`/`}` (non-quantifier, outside classes and `\p{}`) so ST regex scripts with bare braces compile under ICU
 - Verification: 839 JVM unit tests pass (2 new), lint 0 issues, debug APK builds
 
@@ -38,7 +39,7 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 
 ## Not verified (set 15)
 - Physical hardware: only the Extensions flow above and a chat open were exercised (one device); emulator ran without a window and the first minutes were very slow (System UI and app ANRs under load, none once settled)
-- Not exercised: notification tap-through, TTS/STT, image gen, tablet layout, share of a `content://` URI from a real app (adb cannot grant URI permission, so a file URI was used)
+- Not exercised: notification tap-through, TTS/STT, image gen, share of a `content://` URI from a real app (adb cannot grant URI permission, so a file URI was used)
 - The chat in the test profile contains duplicate "hi" messages from the crashed send before the fix
 
 ## Done (feature set 14: Android polish) — plan: docs/plans/13-android-polish.md
