@@ -11,7 +11,13 @@ class RegexEngineTest {
         RegexScript(scriptName = "t", findRegex = find, replaceString = rep, placement = placement).block()
     private fun ai(text: String, vararg sc: RegexScript, p: RegexParams = RegexParams()) = RegexEngine.apply(text, Placement.AI_OUTPUT, sc.toList(), p)
 
-    @Test fun simpleReplace() = assertEquals("a-b b", ai("a b b", s("/ /", "-")))
+    @Test fun bareBracesAreLiteral() = assertEquals("[x]", ai("{x}", s("/{(\\w)}/", "[$1]")))
+    @Test fun bareBraceEscaping() {
+        assertEquals("\\{a\\}", RegexEngine.escapeBareBraces("{a}"))
+        assertEquals("a{2,3}[{}]\\p{L}\\{", RegexEngine.escapeBareBraces("a{2,3}[{}]\\p{L}\\{"))
+        assertEquals("x{2}\\}", RegexEngine.escapeBareBraces("x{2}}"))
+    }
+    @Test fun simpleReplace()= assertEquals("a-b b", ai("a b b", s("/ /", "-")))
     @Test fun globalFlagReplacesAll() = assertEquals("a-b-b", ai("a b b", s("/ /g", "-")))
     @Test fun noGlobalFlagFirstOnly() = assertEquals("axb", ai("abb", s("/b/", "x")))
     @Test fun plainPatternWithoutSlashes() = assertEquals("hello world", ai("hello there", s("there", "world")))

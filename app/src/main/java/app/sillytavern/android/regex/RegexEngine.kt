@@ -123,6 +123,44 @@ object RegexEngine {
             val jn = "g${idx++}n"; names[it.groupValues[1]] = jn; "(?<$jn>"
         }
         translated = Regex("""\\k<([A-Za-z_][A-Za-z0-9_]*)>""").replace(translated) { "\\k<${names[it.groupValues[1]] ?: it.groupValues[1]}>" }
-        return runCatching { Compiled(Pattern.compile(translated, f), 'g' in flags, names) }.getOrNull()
+        return runCatching { Compiled(Pattern.compile(escapeBareBraces(translated), f), 'g' in flags, names) }.getOrNull()
+    }
+
+    private val quantifier = Regex("""\{\d+(,\d*)?\}""")
+
+    /**
+     * JS treats a `{` or `}` that is not a quantifier as a literal; Android's ICU engine (and Java) reject it.
+     * Escapes those, leaving quantifiers, character classes and `\p{..}` / `\x{..}` escapes alone.
+     */
+    internal fun escapeBareBraces(p: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        var inClass = false
+        while (i < p.length) {
+            val ch = p[i]
+            when {
+                ch == '\\' && i + 1 < p.length -> {
+                    sb.append(ch).append(p[i + 1])
+                    val n = p[i + 1]
+                    i += 2
+                    if ((n == 'p' || n == 'P' || n == 'x' || n == 'u' || n == 'N') && i < p.length && p[i] == '{') {
+                        val end = p.indexOf('}', i)
+                        if (end > 0) { sb.append(p, i, end + 1); i = end + 1 }
+                    }
+                    continue
+                }
+                inClass -> { if (ch == ']') inClass = false; sb.append(ch) }
+                ch == '[' -> { inClass = true; sb.append(ch) }
+                ch == '{' -> {
+                    val q = quantifier.matchAt(p, i)
+                    if (q != null && i > 0) { sb.append(q.value); i += q.value.length; continue }
+                    sb.append("\\{")
+                }
+                ch == '}' -> sb.append("\\}")
+                else -> sb.append(ch)
+            }
+            i++
+        }
+        return sb.toString()
     }
 }

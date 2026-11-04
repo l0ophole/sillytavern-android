@@ -26,7 +26,8 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 - First run of the app on a device: Android 15 (API 35) google_apis x86_64 emulator (`st35`), debug APK, mock OpenAI-compatible SSE server on the host (`10.0.2.2`)
 - Found and fixed on the device (all invisible to JVM unit tests): (1) `usesCleartextTraffic` missing, so every `http://` backend failed with "CLEARTEXT communication not permitted"; (2) Android's ICU regex rejects a bare `}`, so `\{\{trim}}` and 6 similar macro patterns crashed the first message send (`ExceptionInInitializerError` in `MacroEngine`); (3) `GenerationWatcher` counted messages to decide a reply was produced, but the streaming placeholder is already in the list at start, so "reply ready" never fired
 - Verified working on the emulator: cold start, default-character install, all 12 Settings screens, share-target import (file URI), connection dialog + model fetch, streaming generation, foreground service (`dataSync`) while backgrounded and its stop afterwards, "reply ready" notification
-- Verification: 837 JVM unit tests pass (1 new), lint 0 issues, debug APK builds
+- Follow-up: `RegexEngine.escapeBareBraces` escapes JS-literal `{`/`}` (non-quantifier, outside classes and `\p{}`) so ST regex scripts with bare braces compile under ICU
+- Verification: 839 JVM unit tests pass (2 new), lint 0 issues, debug APK builds
 
 ## Rulings / deviations (set 15)
 - Executed on `main`, native, no subagents; emulator created by hand (`avdmanager` could not parse the SDK repo XML) with software GPU
@@ -35,7 +36,6 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 ## Not verified (set 15)
 - Still never run on physical hardware; emulator ran without a window and the first minutes were very slow (System UI and app ANRs under load, none once settled)
 - Not exercised: widget pin/render, Extensions install + QuickJS native load on Android, SAF backup/restore pickers, lock screen/user switch, notification tap-through, TTS/STT, image gen, tablet layout, share of a `content://` URI from a real app (adb cannot grant URI permission, so a file URI was used)
-- User-supplied ST regex scripts containing a bare `}` still fail to compile under ICU and are silently skipped
 - The chat in the test profile contains duplicate "hi" messages from the crashed send before the fix
 
 ## Done (feature set 14: Android polish) — plan: docs/plans/13-android-polish.md
