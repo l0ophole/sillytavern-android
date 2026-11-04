@@ -32,6 +32,7 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 - Physical device, tablet layout (`wm size 1600x2560`, density 320): character list fills the width; chat column is width-capped and centered, composer and avatar lay out correctly, no crash. Reset with `wm size reset; wm density reset`. Real foldable/landscape not tried
 - Physical device, notification tap-through (mock SSE backend over LAN): send, press Home, the `generation` foreground notification is replaced by a `replies` "Seraphina — reply ready" notification; tapping it **warm** brings the existing task to the front on that chat, and tapping it **cold** (`am kill` first; the notification survives) starts a new process straight into the chat with the new messages; no crash or ANR. Only one character/chat was used, so "opens the right chat among several" is not separately proven
 - Physical device, remaining Extensions API (test extension in `scripts/device/apitest-ext/`, all six permissions, mock backend over LAN): `st.fetch` (200 from the mock; `ftp://` throws "Only http and https addresses can be fetched"), `st.generateQuiet` (returned the reply and sent only the prompt, no history, chat untouched), `st.setPrompt` (position 2 text was the first message of the next real request; `st.clearPrompt` removed it), `st.sendMessage` (user message posted and a generation ran), `st.addMessage` (Narrator message appeared), `st.context`/`st.messages`, a macro calling `generateQuiet` is refused (`MACROBLOCKED`), and events `chat_changed`, `message_sent`, `generation_started`, `generation_ended`, `message_received` all reach handlers with the documented payloads. No crash. Not run: `st.off`, `st.storage` across restarts, a 5 s timeout
+- Physical device, real `content://` share: a character card JSON (`chara_card_v2`) selected in the system Files app and shared through the Android share sheet to SillyTavern (it is listed for `application/json`) opened the app on the character list with the card imported (name, description, tag), no crash or ANR. Only the JSON path was run; PNG cards, chats, multi-file shares and sharing from Drive or a browser download were not
 - Follow-up: `RegexEngine.escapeBareBraces` escapes JS-literal `{`/`}` (non-quantifier, outside classes and `\p{}`) so ST regex scripts with bare braces compile under ICU
 - Verification: 839 JVM unit tests pass (2 new), lint 0 issues, debug APK builds
 
@@ -41,7 +42,7 @@ Open questions: which local-ML features are worth the on-device cost (set 10).
 
 ## Not verified (set 15)
 - Physical hardware: only the Extensions flow above and a chat open were exercised (one device); emulator ran without a window and the first minutes were very slow (System UI and app ANRs under load, none once settled)
-- Not exercised: TTS/STT, image gen, share of a `content://` URI from a real app (adb cannot grant URI permission, so a file URI was used)
+- Not exercised: TTS/STT, image gen, share of PNG cards, chats and multi-file `content://` shares
 - The chat in the test profile contains duplicate "hi" messages from the crashed send before the fix
 
 ## Done (feature set 14: Android polish) — plan: docs/plans/13-android-polish.md

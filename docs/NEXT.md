@@ -4,7 +4,7 @@ State: sets 1-15 are done and pushed to `origin/main` (github.com/l0ophole/silly
 
 ## Remaining device checks (each needs a real or emulated Android device)
 1. ~~Notification tap-through~~ done warm and cold on the phone (see ROADMAP); only with a single chat.
-2. **Real `content://` share.** Share a character card PNG/JSON from a real app (Files, Drive, a browser download) to SillyTavern. Only a `file://` URI was tested because adb cannot grant URI read permission.
+2. ~~Real `content://` share~~ done for a JSON card from the Files app; PNG cards, chats, multi-file and Drive/browser shares not run.
 3. **TTS (system + cloud) and STT.** Needs RECORD_AUDIO grant and a speech service; check the permission prompt and that speech works.
 4. **Image generation** (A1111/ComfyUI/NovelAI) against a reachable backend, plus the gallery and attachments.
 5. ~~Tablet layout~~ done at 1600x2560 via `wm size` (see ROADMAP); real foldable and landscape not tried.
