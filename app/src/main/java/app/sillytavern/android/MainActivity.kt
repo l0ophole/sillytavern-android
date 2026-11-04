@@ -1,6 +1,17 @@
 package app.sillytavern.android
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.LaunchedEffect
+import app.sillytavern.android.polish.Routes
+import app.sillytavern.android.polish.ShareImporter
+import app.sillytavern.android.polish.SharedItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,16 +29,62 @@ import androidx.navigation.navArgument
 import app.sillytavern.android.ui.*
 
 class MainActivity : ComponentActivity() {
+    /** A chat route requested by a notification or the widget, consumed by the nav host. */
+    private val route = mutableStateOf<String?>(null)
+    /** A share intent waiting for the lock screen to be passed. */
+    private val pendingShare = mutableStateOf<Intent?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        accept(intent)
+    }
+
+    private fun accept(intent: Intent?) {
+        Routes.routeFor(intent)?.let { route.value = it }
+        if (intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE) pendingShare.value = intent
+    }
+
+    @Suppress("DEPRECATION")
+    private fun sharedUris(i: Intent): List<Uri> = when (i.action) {
+        Intent.ACTION_SEND -> listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        else -> i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+    }
+
+    private fun importShared(c: AppContainer, i: Intent) {
+        val uris = sharedUris(i)
+        if (uris.isEmpty()) { Toast.makeText(this, "Nothing to import", Toast.LENGTH_SHORT).show(); return }
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val notes = ArrayList<String>()
+                val items = uris.mapNotNull { u ->
+                    runCatching {
+                        val bytes = contentResolver.openInputStream(u)!!.use { it.readBytes() }
+                        SharedItem(u.lastPathSegment ?: "file", bytes)
+                    }.onFailure { notes += "${u.lastPathSegment}: ${it.message}" }.getOrNull()
+                }
+                val r = ShareImporter(c.characters, c.chats, { c.settings.settings.value.activePersona.name }).import(items)
+                r.copy(notes = r.notes + notes)
+            }
+            Toast.makeText(this@MainActivity, result.summary(), Toast.LENGTH_LONG).show()
+            if (result.imported > 0) route.value = "characters"
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) accept(intent)
         val app = application as SillyTavernApp
         val c = app.container
         setContent {
             val s by c.settings.settings.collectAsState()
             var unlocked by remember { mutableStateOf(app.isUnlocked()) }
             SillyTheme(s.appearance, rememberTranslator(s.appearance.language)) {
-                if (unlocked) AppNav(c, onRebuild = { recreate() })
+                if (unlocked) {
+                    LaunchedEffect(pendingShare.value) { pendingShare.value?.let { importShared(c, it); pendingShare.value = null } }
+                    AppNav(c, route, onRebuild = { recreate() })
+                }
                 else LockScreen(c.account.name, app.accounts.list().filter { it.handle != c.account.handle && !it.locked },
                     onUnlock = { code -> app.unlock(code).also { if (it) unlocked = true } },
                     onSwitch = { app.switchTo(it.handle); recreate() })
@@ -37,8 +94,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppNav(c: AppContainer, onRebuild: () -> Unit) {
+private fun AppNav(c: AppContainer, route: androidx.compose.runtime.MutableState<String?>, onRebuild: () -> Unit) {
     val nav = rememberNavController()
+    LaunchedEffect(route.value) {
+        val r = route.value ?: return@LaunchedEffect
+        route.value = null
+        // Going to "characters" rebuilds the list so freshly imported cards show up.
+        if (r == "characters") nav.navigate(r) { popUpTo("characters") { inclusive = true } } else nav.navigate(r) { launchSingleTop = true }
+    }
     NavHost(nav, startDestination = "characters") {
         composable("characters") {
             CharacterListScreen(c,

@@ -18,6 +18,7 @@ import app.sillytavern.android.data.*
 import app.sillytavern.android.prompt.ApproxTokenCounter
 import app.sillytavern.android.prompt.TiktokenCounter
 import app.sillytavern.android.extensions.ExtensionHost
+import app.sillytavern.android.polish.*
 import app.sillytavern.android.extensions.ExtensionManager
 import app.sillytavern.android.extensions.ExtensionRepository
 import kotlinx.coroutines.CoroutineScope
@@ -27,7 +28,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /** Manual dependency container (Hilt is deferred until the object graph justifies it). */
-class AppContainer(app: Application, val accounts: AccountRegistry, val account: Account) {
+class AppContainer(private val app: Application, val accounts: AccountRegistry, val account: Account) {
     val paths = accounts.pathsFor(account.handle).ensure()
     val backup = BackupService(paths, account.handle)
     val autoBackup = AutoBackup(accounts.backupDir(account.handle), backup)
@@ -90,11 +91,18 @@ class AppContainer(app: Application, val accounts: AccountRegistry, val account:
         characterKey = { chatController.characterFileName() }, automationIds = { chatController.automationIds() },
     ).also { chatController.quickReplies = it }
 
+    private val watcher = GenerationWatcher(
+        chatController.state, { settings.settings.value.polish }, { AppForeground.isForeground }, AndroidGenerationSink(app),
+    )
+
     init {
         chatController.tts = tts; chatController.runStartupQuickReplies()
         chatController.extensions = extensionHost
         scope.launch { extensionHost.sync() }
-        scope.launch(Dispatchers.IO) { runCatching { autoBackup.runIfDue(settings.settings.value.data) } }
+        scope.launch(Dispatchers.IO) {
+            if (!PowerPolicy.postponeBackup(app.isPowerSave(), settings.settings.value.polish)) runCatching { autoBackup.runIfDue(settings.settings.value.data) }
+        }
+        watcher.start(scope)
     }
 
     /** Stops everything this container started; call before replacing it with another user's container. */
@@ -117,8 +125,20 @@ class SillyTavernApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppForeground.install(this)
+        registerReceiver(object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context, i: android.content.Intent) {
+                if (PowerPolicy.pauseAuto(isPowerSave(), container.settings.settings.value.polish)) container.chatController.pauseAuto()
+            }
+        }, android.content.IntentFilter(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         accounts = AccountRegistry(filesDir)
         container = AppContainer(this, accounts, accounts.active())
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_BACKGROUND) runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
     }
 
     fun isUnlocked() = !container.account.locked || container.account.handle in unlocked

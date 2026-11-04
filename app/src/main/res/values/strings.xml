@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">SillyTavern</string>
+    <string name="widget_description">Jump back into your latest chat</string>
 </resources>

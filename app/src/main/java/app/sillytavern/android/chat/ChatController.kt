@@ -1232,6 +1232,9 @@ class ChatController(
         }
     }
 
+    /** Stops group auto-mode (e.g. when Battery Saver turns on). */
+    fun pauseAuto() = stopAuto()
+
     private fun stopAuto() {
         autoJob?.cancel(); autoJob = null
         if (_state.value.autoMode) _state.update { it.copy(autoMode = false) }
